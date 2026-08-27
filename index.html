@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#25221d" />
+    <meta
+      name="description"
+      content="一局四乘五棋盘上的古版暗棋斗兽棋，对阵沉思中的墨方棋手。"
+    />
+    <title>暗兽棋 · 人机对弈</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="暗兽棋">
+          <span class="brand-mark" aria-hidden="true">兽</span>
+          <div>
+            <p class="brand-kicker">古版斗兽暗棋</p>
+            <h1>暗兽棋</h1>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button" id="sound-button" type="button" title="关闭音效" aria-label="关闭音效">
+            <i data-lucide="volume-2" aria-hidden="true"></i>
+          </button>
+          <button class="command-button command-button--quiet" id="rules-button" type="button">
+            <i data-lucide="scroll-text" aria-hidden="true"></i>
+            <span>棋规</span>
+          </button>
+          <button class="command-button" id="restart-button" type="button">
+            <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+            <span>重开</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="game-layout">
+        <aside class="match-panel" aria-label="对局状态">
+          <div class="section-heading">
+            <span>局势</span>
+            <span id="round-count">第 1 手</span>
+          </div>
+          <div class="turn-block" id="turn-block">
+            <div class="turn-seal turn-seal--red" id="turn-seal">朱</div>
+            <div>
+              <p class="turn-label" id="turn-label">你的回合</p>
+              <p class="turn-detail" id="turn-detail">请选择一步</p>
+            </div>
+          </div>
+
+          <div class="score-line">
+            <div>
+              <span class="score-name"><span class="camp-dot camp-dot--red"></span>朱方</span>
+              <strong id="red-count">10</strong>
+            </div>
+            <span class="versus">对</span>
+            <div>
+              <span class="score-name"><span class="camp-dot camp-dot--black"></span>墨方</span>
+              <strong id="black-count">10</strong>
+            </div>
+          </div>
+
+          <div class="fallen-section">
+            <p>已离局</p>
+            <div class="fallen-row">
+              <span>朱</span>
+              <div class="fallen-list" id="red-fallen" aria-label="朱方已离局棋子"></div>
+            </div>
+            <div class="fallen-row">
+              <span>墨</span>
+              <div class="fallen-list" id="black-fallen" aria-label="墨方已离局棋子"></div>
+            </div>
+          </div>
+        </aside>
+
+        <section class="board-stage" aria-label="暗兽棋棋盘区域">
+          <div class="board-caption">
+            <span>四路</span>
+            <span id="board-message">朱方先行</span>
+            <span>五纵</span>
+          </div>
+          <div class="board-frame">
+            <div class="board" id="board" role="grid" aria-label="四乘五暗兽棋棋盘"></div>
+          </div>
+          <div class="legend-line" aria-label="特殊占位图例">
+            <span><i class="legend-mark legend-mark--wall"></i>猫上墙</span>
+            <span><i class="legend-mark legend-mark--burrow"></i>鼠钻洞</span>
+            <span><i class="legend-mark legend-mark--lock"></i>暗子锁定</span>
+          </div>
+        </section>
+
+        <aside class="record-panel" aria-label="行棋记录">
+          <div class="section-heading">
+            <span>落子录</span>
+            <i data-lucide="swords" aria-hidden="true"></i>
+          </div>
+          <ol class="move-log" id="move-log"></ol>
+          <div class="rank-strip">
+            <p>强弱次序</p>
+            <div class="rank-list" id="rank-list"></div>
+            <small>鼠克象 · 同阶兑子</small>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <div class="drawer-backdrop" id="rules-backdrop" hidden></div>
+    <aside class="rules-drawer" id="rules-drawer" aria-hidden="true" aria-labelledby="rules-title">
+      <div class="drawer-header">
+        <div>
+          <p>卷一</p>
+          <h2 id="rules-title">暗兽棋规</h2>
+        </div>
+        <button class="icon-button" id="close-rules-button" type="button" title="关闭棋规" aria-label="关闭棋规">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="rules-content">
+        <section>
+          <h3>每回合一事</h3>
+          <p>翻开一枚未锁暗子，或移动一枚己方明子。普通棋子横竖走一步，落到敌子处即按阶位比较。</p>
+        </section>
+        <section>
+          <h3>胜负与兑子</h3>
+          <p>上阶可吃下阶，同阶相遇则双双离局。象不能吃鼠，鼠却能由象鼻入，反吃象。吃尽或困住对方即胜。</p>
+        </section>
+        <section>
+          <h3>狮行</h3>
+          <p>狮可横竖走一步、斜走一步，亦可横竖跨过一格，落在第二格；跨越不受中间棋子阻挡。</p>
+        </section>
+        <section>
+          <h3>猫鼠藏行</h3>
+          <p>猫可走到相邻暗子之上称“上墙”，鼠可走到相邻暗子之下称“钻洞”。叠放期间该暗子锁住，猫鼠可在自己的后续回合移出。</p>
+        </section>
+      </div>
+    </aside>
+
+    <div class="result-banner" id="result-banner" hidden role="dialog" aria-modal="true" aria-labelledby="result-title">
+      <div class="result-seal" id="result-seal">胜</div>
+      <p>本局已定</p>
+      <h2 id="result-title">朱方获胜</h2>
+      <button class="command-button" id="result-restart-button" type="button">
+        <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+        <span>再来一局</span>
+      </button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
