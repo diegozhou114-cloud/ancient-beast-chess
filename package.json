@@ -1,0 +1,56 @@
+{
+  "name": "ancient-beast-chess",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A 4x5 blind beast-chess game against a tactical AI.",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "dev:renderer": "vite --host 127.0.0.1 --port 4173",
+    "desktop": "concurrently -k \"npm run dev:renderer\" \"wait-on http://127.0.0.1:4173 && ELECTRON_RENDERER_URL=http://127.0.0.1:4173 electron .\"",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "package:mac": "npm run build && electron-builder --mac --arm64 --publish never",
+    "package:win": "npm run build && electron-builder --win zip --x64 --publish never"
+  },
+  "dependencies": {
+    "lucide": "^0.468.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.diegozhou.ancientbeastchess",
+    "productName": "Ancient Beast Chess",
+    "asar": true,
+    "files": [
+      "dist/**",
+      "electron/main.cjs",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "electron/icon.icns",
+      "identity": null,
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "title": "Ancient Beast Chess"
+    },
+    "win": {
+      "target": [
+        "zip"
+      ],
+      "artifactName": "Ancient-Beast-Chess-${version}-win-${arch}.${ext}"
+    }
+  }
+}
