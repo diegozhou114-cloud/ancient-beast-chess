@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Ancient Beast Chess icon">
+  <rect width="1024" height="1024" rx="188" fill="#26332d"/>
+  <rect x="76" y="76" width="872" height="872" rx="140" fill="#c9ae72"/>
+  <path d="M123 732 C300 610 420 695 550 588 C655 500 790 610 901 492 L901 901 L123 901Z" fill="#1d3832" opacity=".38"/>
+  <circle cx="736" cy="286" r="118" fill="#a13f2c" opacity=".92"/>
+  <circle cx="512" cy="512" r="272" fill="#efe0b5" stroke="#9d3d2c" stroke-width="34"/>
+  <circle cx="512" cy="512" r="220" fill="none" stroke="#26332d" stroke-width="13"/>
+  <text x="512" y="630" fill="#9d3d2c" font-family="STSong, Songti SC, serif" font-size="470" font-weight="700" text-anchor="middle">兽</text>
+</svg>
