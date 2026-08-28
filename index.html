@@ -24,18 +24,91 @@
           <button class="icon-button" id="sound-button" type="button" title="关闭音效" aria-label="关闭音效">
             <i data-lucide="volume-2" aria-hidden="true"></i>
           </button>
-          <button class="command-button command-button--quiet" id="rules-button" type="button">
+          <button class="command-button command-button--quiet" id="rules-button" type="button" title="棋规" aria-label="棋规">
             <i data-lucide="scroll-text" aria-hidden="true"></i>
             <span>棋规</span>
           </button>
-          <button class="command-button" id="restart-button" type="button">
+          <button class="command-button command-button--quiet" id="home-button" type="button" title="返回主页" aria-label="返回主页" data-game-action hidden>
+            <i data-lucide="house" aria-hidden="true"></i>
+            <span>返回主页</span>
+          </button>
+          <button class="command-button command-button--quiet" id="setup-button" type="button" title="选择难度" aria-label="选择难度" data-game-action hidden>
+            <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+            <span>选择难度</span>
+          </button>
+          <button class="command-button" id="restart-button" type="button" title="重新开始" aria-label="重新开始" data-game-action hidden>
             <i data-lucide="rotate-ccw" aria-hidden="true"></i>
-            <span>重开</span>
+            <span>重新开始</span>
           </button>
         </div>
       </header>
 
-      <main class="game-layout">
+      <main class="flow-view" id="home-view">
+        <section class="challenge-home" aria-labelledby="challenge-title">
+          <div class="flow-heading">
+            <p>挑战</p>
+            <h2 id="challenge-title">选择对局</h2>
+          </div>
+          <button class="mode-option" id="pve-mode-button" type="button">
+            <span class="mode-seal" aria-hidden="true"><i data-lucide="swords"></i></span>
+            <strong>人机大战</strong>
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
+        </section>
+      </main>
+
+      <main class="flow-view" id="setup-view" hidden>
+        <section class="setup-screen" aria-labelledby="setup-title">
+          <div class="flow-heading">
+            <p>人机大战</p>
+            <h2 id="setup-title">对局设置</h2>
+          </div>
+
+          <div class="setup-group">
+            <div class="setup-label">
+              <span aria-hidden="true">壹</span>
+              <h3>选择难度</h3>
+            </div>
+            <div class="difficulty-selector" role="group" aria-label="人机难度">
+              <button class="difficulty-button" type="button" data-setup-difficulty="gudiao" aria-pressed="false">蛊雕</button>
+              <button class="difficulty-button" type="button" data-setup-difficulty="zhuyan" aria-pressed="true">朱厌</button>
+              <button class="difficulty-button" type="button" data-setup-difficulty="aoyin" aria-pressed="false">獓狠</button>
+              <button class="difficulty-button" type="button" data-setup-difficulty="xiangliu" aria-pressed="false">相柳</button>
+              <button class="difficulty-button" type="button" data-setup-difficulty="qiongqi" aria-pressed="false">穷奇</button>
+            </div>
+          </div>
+
+          <div class="setup-group">
+            <div class="setup-label">
+              <span aria-hidden="true">贰</span>
+              <h3>选择阵营</h3>
+            </div>
+            <div class="camp-selector" role="group" aria-label="玩家阵营">
+              <button class="camp-button camp-button--red" type="button" data-player-camp="red" aria-pressed="true">
+                <b aria-hidden="true">朱</b>
+                <span>执朱方</span>
+              </button>
+              <button class="camp-button camp-button--black" type="button" data-player-camp="black" aria-pressed="false">
+                <b aria-hidden="true">墨</b>
+                <span>执墨方</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="setup-actions">
+            <button class="command-button command-button--quiet" id="setup-home-button" type="button">
+              <i data-lucide="arrow-left" aria-hidden="true"></i>
+              <span>返回主页</span>
+            </button>
+            <button class="command-button" id="start-game-button" type="button">
+              <i data-lucide="play" aria-hidden="true"></i>
+              <span>进入对局</span>
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <main class="game-layout" id="game-view" hidden>
         <aside class="match-panel" aria-label="对局状态">
           <div class="section-heading">
             <span>局势</span>
@@ -49,14 +122,21 @@
             </div>
           </div>
 
+          <div class="match-config" aria-label="当前对局配置">
+            <span>人机大战</span>
+            <span>难度 <strong id="match-difficulty">朱厌</strong></span>
+          </div>
+
           <div class="score-line">
             <div>
               <span class="score-name"><span class="camp-dot camp-dot--red"></span>朱方</span>
+              <span class="controller-label" id="red-controller">真人（你）</span>
               <strong id="red-count">10</strong>
             </div>
             <span class="versus">对</span>
             <div>
               <span class="score-name"><span class="camp-dot camp-dot--black"></span>墨方</span>
+              <span class="controller-label" id="black-controller">人机</span>
               <strong id="black-count">10</strong>
             </div>
           </div>
@@ -84,7 +164,7 @@
             <div class="board" id="board" role="grid" aria-label="四乘五暗兽棋棋盘"></div>
           </div>
           <div class="legend-line" aria-label="特殊占位图例">
-            <span><i class="legend-mark legend-mark--wall"></i>猫上墙</span>
+            <span><i class="legend-mark legend-mark--wall"></i>猫上墙 / 狗急跳墙</span>
             <span><i class="legend-mark legend-mark--burrow"></i>鼠钻洞</span>
             <span><i class="legend-mark legend-mark--lock"></i>暗子锁定</span>
           </div>
@@ -130,8 +210,8 @@
           <p>狮可横竖走一步、斜走一步，亦可横竖跨过一格，落在第二格；跨越不受中间棋子阻挡。</p>
         </section>
         <section>
-          <h3>猫鼠藏行</h3>
-          <p>猫可走到相邻暗子之上称“上墙”，鼠可走到相邻暗子之下称“钻洞”。叠放期间该暗子锁住，猫鼠可在自己的后续回合移出。</p>
+          <h3>猫狗鼠藏行</h3>
+          <p>猫可走到相邻暗子之上称“上墙”，狗可走到相邻暗子之上称“狗急跳墙”，鼠可走到相邻暗子之下称“钻洞”。狗可吃相邻墙上的敌方猫。叠放期间该暗子锁住，猫狗鼠可在自己的后续回合移出。</p>
         </section>
       </div>
     </aside>
@@ -140,10 +220,19 @@
       <div class="result-seal" id="result-seal">胜</div>
       <p>本局已定</p>
       <h2 id="result-title">朱方获胜</h2>
-      <button class="command-button" id="result-restart-button" type="button">
-        <i data-lucide="rotate-ccw" aria-hidden="true"></i>
-        <span>再来一局</span>
-      </button>
+      <div class="result-actions">
+        <button class="icon-button" id="result-home-button" type="button" title="返回主页" aria-label="返回主页">
+          <i data-lucide="house" aria-hidden="true"></i>
+        </button>
+        <button class="command-button command-button--quiet" id="result-setup-button" type="button">
+          <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+          <span>选择难度</span>
+        </button>
+        <button class="command-button" id="result-restart-button" type="button">
+          <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+          <span>再来一局</span>
+        </button>
+      </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>
