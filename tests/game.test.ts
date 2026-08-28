@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseAiAction } from "../src/ai";
+import { AI_DIFFICULTIES, chooseAiAction } from "../src/ai";
 import {
   RANKS,
   applyAction,
@@ -76,6 +76,38 @@ describe("special movement", () => {
     expect(leftWall.board[0].base?.rank).toBe("cat");
   });
 
+  it("lets a dog use dog urgent wall-jump onto a hidden piece", () => {
+    const state = createEmptyState();
+    state.board[0].base = makePiece("red", "dog");
+    state.board[1].base = makePiece("black", "tiger", false);
+
+    const perched = applyAction(state, { type: "move", from: 0, to: 1 });
+    expect(perched.board[1].guest?.rank).toBe("dog");
+    expect(perched.board[1].guestMode).toBe("above");
+    expect(perched.log).toContain("朱狗急跳墙");
+    expect(getLegalActions(perched)).not.toContainEqual({ type: "flip", at: 1 });
+  });
+
+  it("lets a dog on a wall capture an enemy cat on an adjacent wall", () => {
+    const state = createEmptyState();
+    state.board[0].base = makePiece("red", "elephant", false);
+    state.board[0].guest = makePiece("red", "dog");
+    state.board[0].guestMode = "above";
+    state.board[1].base = makePiece("black", "tiger", false);
+    state.board[1].guest = makePiece("black", "cat");
+    state.board[1].guestMode = "above";
+
+    expect(getLegalDestinations(state, 0)).toContain(1);
+    const captured = applyAction(state, { type: "move", from: 0, to: 1 });
+
+    expect(captured.board[0].guest).toBeNull();
+    expect(captured.board[1].base?.revealed).toBe(false);
+    expect(captured.board[1].guest?.rank).toBe("dog");
+    expect(captured.board[1].guestMode).toBe("above");
+    expect(captured.fallen.black.map((piece) => piece.rank)).toContain("cat");
+    expect(captured.log).toContain("朱狗吃墨猫");
+  });
+
   it("puts a rat below a hidden piece", () => {
     const state = createEmptyState();
     state.board[4].base = makePiece("red", "rat");
@@ -94,9 +126,52 @@ describe("turns and AI", () => {
     expect(afterFlip.turn).toBe("black");
     expect(afterFlip.moveNumber).toBe(2);
 
-    const action = chooseAiAction(afterFlip, () => 0.1);
-    expect(action).not.toBeNull();
-    expect(getLegalActions(afterFlip)).toContainEqual(action);
+    expect(AI_DIFFICULTIES).toEqual(["gudiao", "zhuyan", "aoyin", "xiangliu", "qiongqi"]);
+    AI_DIFFICULTIES.forEach((difficulty) => {
+      const action = chooseAiAction(afterFlip, difficulty, () => 0.1);
+      expect(action).not.toBeNull();
+      expect(getLegalActions(afterFlip)).toContainEqual(action);
+    });
+
+    expect(getLegalActions(afterFlip)).toContainEqual(chooseAiAction(afterFlip, () => 0.1));
+  });
+
+  it("lets the AI control the red camp and take the opening turn", () => {
+    const state = createGame(() => 0.25);
+
+    AI_DIFFICULTIES.forEach((difficulty) => {
+      const action = chooseAiAction(state, difficulty, () => 0.1, "red");
+      expect(action).not.toBeNull();
+      expect(getLegalActions(state, "red")).toContainEqual(action);
+    });
+  });
+
+  it("lets search-based AI avoid a capture that is immediately lost to a stronger reply", () => {
+    const state = createEmptyState("black");
+    state.board[0].base = makePiece("black", "dog");
+    state.board[1].base = makePiece("red", "cat");
+    state.board[2].base = makePiece("red", "human");
+    state.board[4].base = makePiece("black", "wolf");
+    state.board[5].base = makePiece("red", "rat");
+
+    expect(chooseAiAction(state, "zhuyan", () => 0)).toEqual({ type: "move", from: 0, to: 1 });
+    (["aoyin", "xiangliu", "qiongqi"] as const).forEach((difficulty) => {
+      expect(chooseAiAction(state, difficulty, () => 0)).toEqual({ type: "move", from: 4, to: 5 });
+    });
+  });
+
+  it("evaluates search from the red AI's point of view", () => {
+    const state = createEmptyState("red");
+    state.board[0].base = makePiece("red", "dog");
+    state.board[1].base = makePiece("black", "cat");
+    state.board[2].base = makePiece("black", "human");
+    state.board[4].base = makePiece("red", "wolf");
+    state.board[5].base = makePiece("black", "rat");
+
+    expect(chooseAiAction(state, "zhuyan", () => 0, "red")).toEqual({ type: "move", from: 0, to: 1 });
+    (["aoyin", "xiangliu", "qiongqi"] as const).forEach((difficulty) => {
+      expect(chooseAiAction(state, difficulty, () => 0, "red")).toEqual({ type: "move", from: 4, to: 5 });
+    });
   });
 
   it("ends the game when a camp loses its final piece", () => {

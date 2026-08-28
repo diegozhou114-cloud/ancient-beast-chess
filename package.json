@@ -1,7 +1,7 @@
 {
   "name": "ancient-beast-chess",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A 4x5 blind beast-chess game against a tactical AI.",
   "type": "module",
   "main": "electron/main.cjs",
