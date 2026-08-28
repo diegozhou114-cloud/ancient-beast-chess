@@ -176,10 +176,17 @@ export function applyAction(state: GameState, action: Action): GameState {
     const mover = getActivePiece(source)!;
     removeActivePiece(source);
 
-    if (target.base && !target.base.revealed) {
+    if (target.guest) {
+      const defender = target.guest;
+      madeProgress = true;
+      next.fallen[defender.camp].push(defender);
       target.guest = mover;
-      target.guestMode = mover.rank === "cat" ? "above" : "below";
-      logEntry = `${CAMP_LABEL[mover.camp]}${RANK_LABEL[mover.rank]}${mover.rank === "cat" ? "上墙" : "钻洞"}`;
+      target.guestMode = "above";
+      logEntry = `${CAMP_LABEL[mover.camp]}${RANK_LABEL[mover.rank]}吃${CAMP_LABEL[defender.camp]}${RANK_LABEL[defender.rank]}`;
+    } else if (target.base && !target.base.revealed) {
+      target.guest = mover;
+      target.guestMode = mover.rank === "rat" ? "below" : "above";
+      logEntry = `${CAMP_LABEL[mover.camp]}${RANK_LABEL[mover.rank]}${mover.rank === "dog" ? "急跳墙" : mover.rank === "cat" ? "上墙" : "钻洞"}`;
     } else if (target.base) {
       const defender = target.base;
       madeProgress = true;
@@ -250,7 +257,7 @@ export function isLegalMove(state: GameState, from: number, to: number): boolean
   const source = state.board[from];
   const target = state.board[to];
   const mover = getActivePiece(source);
-  if (!mover || mover.camp !== state.turn || target.guest) return false;
+  if (!mover || mover.camp !== state.turn) return false;
 
   const fromRow = Math.floor(from / COLS);
   const fromCol = from % COLS;
@@ -266,8 +273,11 @@ export function isLegalMove(state: GameState, from: number, to: number): boolean
 
   if (!orthogonalStep && !lionDiagonal && !lionLeap) return false;
 
+  if (target.guest) {
+    return mover.rank === "dog" && target.guest.rank === "cat" && target.guest.camp !== mover.camp;
+  }
   if (target.base && !target.base.revealed) {
-    return orthogonalStep && (mover.rank === "cat" || mover.rank === "rat");
+    return orthogonalStep && (mover.rank === "cat" || mover.rank === "dog" || mover.rank === "rat");
   }
   if (!target.base) return true;
   if (target.base.camp === mover.camp) return false;

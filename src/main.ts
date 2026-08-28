@@ -1,6 +1,6 @@
 import "./styles.css";
-import { createIcons, RotateCcw, ScrollText, Swords, Volume2, VolumeX, X } from "lucide";
-import { chooseAiAction } from "./ai";
+import { ArrowLeft, ChevronRight, createIcons, House, Play, RotateCcw, ScrollText, SlidersHorizontal, Swords, Volume2, VolumeX, X } from "lucide";
+import { AI_DIFFICULTIES, AI_DIFFICULTY_LABELS, chooseAiAction, type AiDifficulty } from "./ai";
 import {
   COLS,
   RANKS,
@@ -37,27 +37,68 @@ const resultTitleElement = element<HTMLHeadingElement>("result-title");
 const soundButton = element<HTMLButtonElement>("sound-button");
 const rulesDrawer = element<HTMLElement>("rules-drawer");
 const rulesBackdrop = element<HTMLDivElement>("rules-backdrop");
+const homeView = element<HTMLElement>("home-view");
+const setupView = element<HTMLElement>("setup-view");
+const gameView = element<HTMLElement>("game-view");
+const matchDifficultyElement = element<HTMLElement>("match-difficulty");
+const redControllerElement = element<HTMLSpanElement>("red-controller");
+const blackControllerElement = element<HTMLSpanElement>("black-controller");
+const setupDifficultyButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-setup-difficulty]"));
+const campButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-player-camp]"));
+const gameActionButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-game-action]"));
 
+type View = "home" | "setup" | "game";
+
+let currentView: View = "home";
 let state = createGame();
 let selectedIndex: number | null = null;
 let aiThinking = false;
 let soundEnabled = true;
 let audioContext: AudioContext | null = null;
 let aiTimer: number | null = null;
+let aiDifficulty: AiDifficulty = "zhuyan";
+let playerCamp: Camp = "red";
+let pendingAiDifficulty: AiDifficulty = aiDifficulty;
+let pendingPlayerCamp: Camp = playerCamp;
 
 renderRankList();
 render();
+renderSetup();
+renderView();
 hydrateIcons();
 
 boardElement.addEventListener("click", (event) => {
   const clicked = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-cell-index]");
-  if (!clicked || aiThinking || state.status !== "playing" || state.turn !== "red") return;
+  if (!clicked || currentView !== "game" || aiThinking || state.status !== "playing" || state.turn !== playerCamp) return;
   handleBoardClick(Number(clicked.dataset.cellIndex));
 });
 
 element<HTMLButtonElement>("restart-button").addEventListener("click", restartGame);
 element<HTMLButtonElement>("result-restart-button").addEventListener("click", restartGame);
+element<HTMLButtonElement>("pve-mode-button").addEventListener("click", openSetup);
+element<HTMLButtonElement>("setup-button").addEventListener("click", openSetup);
+element<HTMLButtonElement>("result-setup-button").addEventListener("click", openSetup);
+element<HTMLButtonElement>("home-button").addEventListener("click", goHome);
+element<HTMLButtonElement>("setup-home-button").addEventListener("click", goHome);
+element<HTMLButtonElement>("result-home-button").addEventListener("click", goHome);
+element<HTMLButtonElement>("start-game-button").addEventListener("click", startGame);
 soundButton.addEventListener("click", toggleSound);
+setupDifficultyButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const difficulty = button.dataset.setupDifficulty as AiDifficulty;
+    if (!AI_DIFFICULTIES.includes(difficulty)) return;
+    pendingAiDifficulty = difficulty;
+    renderSetup();
+  });
+});
+campButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const camp = button.dataset.playerCamp as Camp;
+    if (camp !== "red" && camp !== "black") return;
+    pendingPlayerCamp = camp;
+    renderSetup();
+  });
+});
 element<HTMLButtonElement>("rules-button").addEventListener("click", () => setRulesOpen(true));
 element<HTMLButtonElement>("close-rules-button").addEventListener("click", () => setRulesOpen(false));
 rulesBackdrop.addEventListener("click", () => setRulesOpen(false));
@@ -65,7 +106,7 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     selectedIndex = null;
     setRulesOpen(false);
-    render();
+    if (currentView === "game") render();
   }
 });
 
@@ -86,7 +127,7 @@ function handleBoardClick(index: number): void {
     }
   }
 
-  if (piece?.camp === "red") {
+  if (piece?.camp === playerCamp) {
     selectedIndex = index;
     render();
     playTone("select");
@@ -108,11 +149,12 @@ function performAction(action: Action): void {
 }
 
 function scheduleAiTurn(): void {
-  if (state.status !== "playing" || state.turn !== "black") return;
+  const computerCamp = getAiCamp();
+  if (currentView !== "game" || state.status !== "playing" || state.turn !== computerCamp) return;
   aiThinking = true;
   render();
   aiTimer = window.setTimeout(() => {
-    const action = chooseAiAction(state);
+    const action = chooseAiAction(state, aiDifficulty, Math.random, computerCamp);
     if (action) {
       state = applyAction(state, action);
       playTone(action.type === "flip" ? "flip" : "move");
@@ -120,17 +162,56 @@ function scheduleAiTurn(): void {
     aiThinking = false;
     aiTimer = null;
     render();
+    scheduleAiTurn();
   }, 620);
 }
 
 function restartGame(): void {
-  if (aiTimer !== null) window.clearTimeout(aiTimer);
+  stopAiTurn();
   state = createGame();
   selectedIndex = null;
-  aiThinking = false;
-  aiTimer = null;
   render();
   playTone("restart");
+  scheduleAiTurn();
+}
+
+function startGame(): void {
+  aiDifficulty = pendingAiDifficulty;
+  playerCamp = pendingPlayerCamp;
+  currentView = "game";
+  state = createGame();
+  selectedIndex = null;
+  stopAiTurn();
+  setRulesOpen(false);
+  renderView();
+  render();
+  playTone("restart");
+  scheduleAiTurn();
+}
+
+function openSetup(): void {
+  stopAiTurn();
+  pendingAiDifficulty = aiDifficulty;
+  pendingPlayerCamp = playerCamp;
+  currentView = "setup";
+  selectedIndex = null;
+  setRulesOpen(false);
+  renderSetup();
+  renderView();
+}
+
+function goHome(): void {
+  stopAiTurn();
+  currentView = "home";
+  selectedIndex = null;
+  setRulesOpen(false);
+  renderView();
+}
+
+function stopAiTurn(): void {
+  if (aiTimer !== null) window.clearTimeout(aiTimer);
+  aiTimer = null;
+  aiThinking = false;
 }
 
 function render(): void {
@@ -139,29 +220,73 @@ function render(): void {
     .map((cell, index) => renderCell(cell, index, destinations))
     .join("");
 
+  const computerCamp = getAiCamp();
   const isRedTurn = state.turn === "red";
-  const statusText = state.status === "won" ? `${state.winner === "red" ? "朱方" : "墨方"}胜` : state.status === "draw" ? "和局" : isRedTurn ? "你的回合" : "墨方回合";
+  const isPlayerTurn = state.turn === playerCamp;
+  const statusText = state.status === "won"
+    ? state.winner === playerCamp ? "你已获胜" : "人机获胜"
+    : state.status === "draw" ? "和局"
+    : isPlayerTurn ? "你的回合" : "人机回合";
   turnBlockElement.classList.toggle("turn-block--thinking", aiThinking);
   turnSealElement.className = `turn-seal turn-seal--${isRedTurn ? "red" : "black"}`;
   turnSealElement.textContent = isRedTurn ? "朱" : "墨";
   turnLabelElement.textContent = statusText;
-  turnDetailElement.textContent = state.status !== "playing" ? "本局已定" : aiThinking ? "正在推演" : selectedIndex === null ? "翻子或行子" : "择一亮格落子";
+  turnDetailElement.textContent = state.status !== "playing"
+    ? "本局已定"
+    : aiThinking ? "正在推演"
+    : isPlayerTurn ? selectedIndex === null ? "翻子或行子" : "择一亮格落子"
+    : `${campLabel(computerCamp)}方行棋`;
   roundCountElement.textContent = `第 ${state.moveNumber} 手`;
-  boardMessageElement.textContent = state.status !== "playing" ? statusText : aiThinking ? "墨方推演中" : selectedIndex === null ? "朱方先行" : "落子处已标亮";
+  boardMessageElement.textContent = state.status !== "playing"
+    ? statusText
+    : aiThinking ? `${campLabel(computerCamp)}方推演中`
+    : isPlayerTurn ? selectedIndex === null ? "翻子或行子" : "落子处已标亮"
+    : `${campLabel(computerCamp)}方行棋`;
   redCountElement.textContent = String(countPieces(state, "red"));
   blackCountElement.textContent = String(countPieces(state, "black"));
+  matchDifficultyElement.textContent = AI_DIFFICULTY_LABELS[aiDifficulty];
+  redControllerElement.textContent = playerCamp === "red" ? "真人（你）" : `人机（${AI_DIFFICULTY_LABELS[aiDifficulty]}）`;
+  blackControllerElement.textContent = playerCamp === "black" ? "真人（你）" : `人机（${AI_DIFFICULTY_LABELS[aiDifficulty]}）`;
   redFallenElement.innerHTML = renderFallen("red");
   blackFallenElement.innerHTML = renderFallen("black");
   moveLogElement.innerHTML = state.log.map((entry) => `<li>${entry}</li>`).join("");
 
-  resultBannerElement.hidden = state.status === "playing";
+  resultBannerElement.hidden = currentView !== "game" || state.status === "playing";
   if (state.status === "won") {
-    resultSealElement.textContent = state.winner === "red" ? "胜" : "负";
-    resultTitleElement.textContent = state.winner === "red" ? "朱方获胜" : "墨方获胜";
+    const playerWon = state.winner === playerCamp;
+    resultSealElement.textContent = playerWon ? "胜" : "负";
+    resultTitleElement.textContent = playerWon ? "你已获胜" : "人机获胜";
   } else if (state.status === "draw") {
     resultSealElement.textContent = "和";
     resultTitleElement.textContent = "势均力敌";
   }
+}
+
+function renderSetup(): void {
+  setupDifficultyButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.setupDifficulty === pendingAiDifficulty));
+  });
+  campButtons.forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.playerCamp === pendingPlayerCamp));
+  });
+}
+
+function renderView(): void {
+  homeView.hidden = currentView !== "home";
+  setupView.hidden = currentView !== "setup";
+  gameView.hidden = currentView !== "game";
+  gameActionButtons.forEach((button) => {
+    button.hidden = currentView !== "game";
+  });
+  if (currentView !== "game") resultBannerElement.hidden = true;
+}
+
+function getAiCamp(): Camp {
+  return playerCamp === "red" ? "black" : "red";
+}
+
+function campLabel(camp: Camp): string {
+  return camp === "red" ? "朱" : "墨";
 }
 
 function renderCell(cell: GameState["board"][number], index: number, destinations: number[]): string {
@@ -243,7 +368,7 @@ function setRulesOpen(open: boolean): void {
 }
 
 function hydrateIcons(): void {
-  createIcons({ icons: { RotateCcw, ScrollText, Swords, Volume2, VolumeX, X } });
+  createIcons({ icons: { ArrowLeft, ChevronRight, House, Play, RotateCcw, ScrollText, SlidersHorizontal, Swords, Volume2, VolumeX, X } });
 }
 
 function playTone(kind: "select" | "flip" | "move" | "restart"): void {
