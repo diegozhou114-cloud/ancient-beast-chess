@@ -1,6 +1,6 @@
 {
   "name": "ancient-beast-chess-server",
-  "version": "0.0.3",
+  "version": "1.0.0",
   "description": "Authoritative WebSocket server for Ancient Beast Chess.",
   "license": "MIT",
   "type": "module",

@@ -7,6 +7,7 @@ import {
   loadOnlineSession,
   normalizeRoomCode,
   normalizeServerAddress,
+  parseServerMessage,
   saveOnlineSession,
   type PublicGameState,
 } from "../src/online";
@@ -17,6 +18,23 @@ describe("online connection input", () => {
     expect(normalizeServerAddress("https://game.example.test/socket")).toBe("wss://game.example.test/socket");
     expect(() => normalizeServerAddress("ftp://example.test")).toThrow();
     expect(() => normalizeServerAddress("ws://user:pass@example.test")).toThrow();
+  });
+
+  it("accepts valid join approval events and rejects malformed ones", () => {
+    expect(parseServerMessage(JSON.stringify({ type: "join_pending", roomCode: "ABC234" }))).toEqual({
+      type: "join_pending",
+      roomCode: "ABC234",
+    });
+    expect(parseServerMessage(JSON.stringify({ type: "join_requested", roomCode: "ABC234", joinRequestId: "request-1" }))).toMatchObject({
+      type: "join_requested",
+      joinRequestId: "request-1",
+    });
+    expect(parseServerMessage(JSON.stringify({ type: "join_rejected", roomCode: "ABC234", reason: "timeout" }))).toMatchObject({
+      type: "join_rejected",
+      reason: "timeout",
+    });
+    expect(parseServerMessage(JSON.stringify({ type: "join_rejected", roomCode: "ABC234", reason: "unknown" }))).toBeNull();
+    expect(parseServerMessage(JSON.stringify({ type: "join_requested", roomCode: "ABC234", joinRequestId: "x".repeat(65) }))).toBeNull();
   });
 
   it("normalizes and validates room codes", () => {
@@ -32,12 +50,21 @@ describe("online connection input", () => {
       setItem: (key: string, value: string) => values.set(key, value),
       removeItem: (key: string) => values.delete(key),
     } as unknown as Storage;
-    const session = { endpoint: "ws://127.0.0.1:8787/ws", roomCode: "ABC234", reconnectToken: "secret", seat: "red" as const };
+    const session = { endpoint: "ws://127.0.0.1:8787/ws", roomCode: "ABC234", reconnectToken: "secret", seat: "red" as const, networkMode: "lan" as const };
 
     saveOnlineSession(storage, session);
 
     expect(values.has(ONLINE_SESSION_KEY)).toBe(true);
     expect(loadOnlineSession(storage)).toEqual(session);
+  });
+
+  it("loads sessions from older clients as public-server sessions", () => {
+    const legacy = { endpoint: "wss://game.example.test/ws", roomCode: "ABC234", reconnectToken: "secret", seat: "black" };
+    const storage = {
+      getItem: () => JSON.stringify(legacy),
+    } as unknown as Storage;
+
+    expect(loadOnlineSession(storage)).toEqual({ ...legacy, networkMode: "remote" });
   });
 
   it("continues without persistence when browser storage is unavailable", () => {
@@ -48,7 +75,7 @@ describe("online connection input", () => {
     } as unknown as Storage;
 
     expect(loadOnlineSession(storage)).toBeNull();
-    expect(() => saveOnlineSession(storage, { endpoint: "ws://127.0.0.1:8787/ws", roomCode: "ABC234", reconnectToken: "token", seat: "red" })).not.toThrow();
+    expect(() => saveOnlineSession(storage, { endpoint: "ws://127.0.0.1:8787/ws", roomCode: "ABC234", reconnectToken: "token", seat: "red", networkMode: "remote" })).not.toThrow();
   });
 });
 

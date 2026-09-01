@@ -189,7 +189,7 @@ describe("Ancient Beast Chess server", () => {
     expect(healthResponse.status).toBe(200);
     expect(health).toMatchObject({
       status: "ok",
-      serverVersion: "0.0.3",
+      serverVersion: "1.0.0",
       protocolVersion: "abc-ws/1",
       online: 0,
       rooms: 0,
@@ -246,6 +246,104 @@ describe("Ancient Beast Chess server", () => {
     third.send({ type: "join_room", roomCode: redJoined.roomCode, requestId: "full" });
     const error = await third.next("error");
     expect(error).toMatchObject({ requestId: "full", code: "ROOM_FULL" });
+  });
+
+  it("keeps legacy rooms automatic and admits an approved LAN join request", async () => {
+    const legacyHost = await connect();
+    const legacyGuest = await connect();
+    legacyHost.send({ type: "create_room" });
+    const legacyRoom = await legacyHost.next("room_joined");
+    legacyGuest.send({ type: "join_room", roomCode: legacyRoom.roomCode });
+    expect((await legacyGuest.next("room_joined")).seat).toBe("black");
+
+    const host = await connect();
+    const guest = await connect();
+    host.send({ type: "create_room", joinApproval: true });
+    const created = await host.next("room_joined");
+    guest.send({ type: "join_room", roomCode: created.roomCode, requestId: "approval-join" });
+    const [pending, requested] = await Promise.all([
+      guest.next("join_pending"),
+      host.next("join_requested"),
+    ]);
+    expect(pending.roomCode).toBe(created.roomCode);
+    expect(created.snapshot.seats.black.occupied).toBe(false);
+
+    host.send({ type: "accept_join", joinRequestId: requested.joinRequestId });
+    const [joined, hostSnapshot] = await Promise.all([
+      guest.next("room_joined"),
+      host.next("snapshot", (message) => message.snapshot.seats.black.occupied),
+    ]);
+    expect(joined).toMatchObject({ requestId: "approval-join", seat: "black" });
+    expect(joined.snapshot).toEqual(hostSnapshot.snapshot);
+  });
+
+  it("authorizes approval, limits concurrency, and supports cancel and reject", async () => {
+    const host = await connect();
+    const first = await connect();
+    const second = await connect();
+    const outsider = await connect();
+    host.send({ type: "create_room", joinApproval: true });
+    const created = await host.next("room_joined");
+
+    first.send({ type: "join_room", roomCode: created.roomCode });
+    const requested = await host.next("join_requested");
+    await first.next("join_pending");
+
+    outsider.send({ type: "accept_join", joinRequestId: requested.joinRequestId, requestId: "unauthorized" });
+    expect(await outsider.next("error")).toMatchObject({ requestId: "unauthorized", code: "NOT_ROOM_HOST" });
+
+    second.send({ type: "join_room", roomCode: created.roomCode, requestId: "concurrent" });
+    expect(await second.next("error")).toMatchObject({ requestId: "concurrent", code: "JOIN_REQUEST_PENDING" });
+
+    first.send({ type: "cancel_join" });
+    const [hostCancelled, firstCancelled] = await Promise.all([
+      host.next("join_rejected"),
+      first.next("join_rejected"),
+    ]);
+    expect(hostCancelled.reason).toBe("cancelled");
+    expect(firstCancelled.reason).toBe("cancelled");
+
+    second.send({ type: "join_room", roomCode: created.roomCode });
+    const secondRequest = await host.next("join_requested");
+    await second.next("join_pending");
+    host.send({ type: "reject_join", joinRequestId: secondRequest.joinRequestId });
+    const [hostRejected, secondRejected] = await Promise.all([
+      host.next("join_rejected"),
+      second.next("join_rejected"),
+    ]);
+    expect(hostRejected.reason).toBe("rejected");
+    expect(secondRejected.reason).toBe("rejected");
+  });
+
+  it("cleans approval requests after timeout and either side disconnects", async () => {
+    await restartServer({ waitingTimeoutMs: 60_000 });
+    const host = await connect();
+    const first = await connect();
+    const second = await connect();
+    host.send({ type: "create_room", joinApproval: true });
+    const created = await host.next("room_joined");
+
+    first.send({ type: "join_room", roomCode: created.roomCode });
+    await Promise.all([host.next("join_requested"), first.next("join_pending")]);
+    now += 30_001;
+    server.runMaintenance();
+    const [hostTimeout, firstTimeout] = await Promise.all([
+      host.next("join_rejected"),
+      first.next("join_rejected"),
+    ]);
+    expect(hostTimeout.reason).toBe("timeout");
+    expect(firstTimeout.reason).toBe("timeout");
+
+    second.send({ type: "join_room", roomCode: created.roomCode });
+    await Promise.all([host.next("join_requested"), second.next("join_pending")]);
+    second.terminate();
+    expect(await host.next("join_rejected")).toMatchObject({ reason: "disconnected" });
+
+    const replacement = await connect();
+    replacement.send({ type: "join_room", roomCode: created.roomCode });
+    await Promise.all([host.next("join_requested"), replacement.next("join_pending")]);
+    host.terminate();
+    expect(await replacement.next("join_rejected")).toMatchObject({ reason: "host_unavailable" });
   });
 
   it("releases a waiting seat when a player leaves explicitly", async () => {

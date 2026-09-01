@@ -58,9 +58,14 @@
             <strong>人机大战</strong>
             <i data-lucide="chevron-right" aria-hidden="true"></i>
           </button>
-          <button class="mode-option" id="online-mode-button" type="button">
+          <button class="mode-option" id="lan-mode-button" type="button" hidden>
+            <span class="mode-seal mode-seal--lan" aria-hidden="true"><i data-lucide="network"></i></span>
+            <strong>局域网对战</strong>
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
+          <button class="mode-option" id="remote-mode-button" type="button">
             <span class="mode-seal mode-seal--online" aria-hidden="true"><i data-lucide="wifi"></i></span>
-            <strong>联机对战</strong>
+            <strong>公网对战</strong>
             <i data-lucide="chevron-right" aria-hidden="true"></i>
           </button>
         </section>
@@ -69,8 +74,8 @@
       <main class="flow-view" id="online-view" hidden>
         <section class="online-screen" aria-labelledby="online-title">
           <div class="flow-heading">
-            <p>双人对弈</p>
-            <h2 id="online-title">联机对战</h2>
+            <p id="online-kicker">远程联机</p>
+            <h2 id="online-title">公网对战</h2>
           </div>
 
           <div class="online-status-line" id="online-status-line" role="status" aria-live="polite">
@@ -79,29 +84,28 @@
           </div>
 
           <div id="online-entry">
-            <div class="setup-group online-server-group">
-              <label class="setup-label" for="online-server-input">
-                <span aria-hidden="true">壹</span>
-                <h3>服务器</h3>
-              </label>
-              <input class="text-input" id="online-server-input" type="text" inputmode="url" autocomplete="url" spellcheck="false" value="ws://127.0.0.1:8787/ws" />
-            </div>
-
-            <div class="online-commands">
+            <div id="lan-entry-panel" hidden>
               <div class="online-command-row">
                 <div class="setup-label">
-                  <span aria-hidden="true">贰</span>
+                  <span aria-hidden="true">壹</span>
                   <h3>创建房间</h3>
                 </div>
                 <button class="command-button" id="create-room-button" type="button">
                   <i data-lucide="plus" aria-hidden="true"></i>
-                  <span>创建房间</span>
+                  <span>成为房主</span>
                 </button>
+              </div>
+              <div class="online-command-row lan-room-section">
+                <div class="setup-label">
+                  <span aria-hidden="true">贰</span>
+                  <h3>可加入房间</h3>
+                </div>
+                <div class="lan-room-list" id="lan-room-list" aria-live="polite"></div>
               </div>
               <div class="online-command-row online-command-row--join">
                 <label class="setup-label" for="join-room-code">
                   <span aria-hidden="true">叁</span>
-                  <h3>加入房间</h3>
+                  <h3>输入房间码</h3>
                 </label>
                 <div class="join-controls">
                   <input class="text-input room-code-input" id="join-room-code" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="6" placeholder="房间码" aria-label="六位房间码" />
@@ -111,6 +115,50 @@
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div id="remote-entry-panel">
+              <div class="setup-group online-server-group">
+                <label class="setup-label" for="online-server-input">
+                  <span aria-hidden="true">壹</span>
+                  <h3>服务器</h3>
+                </label>
+                <input class="text-input" id="online-server-input" type="text" inputmode="url" autocomplete="url" spellcheck="false" value="ws://127.0.0.1:8787/ws" />
+              </div>
+              <div class="online-commands">
+                <div class="online-command-row">
+                  <div class="setup-label">
+                    <span aria-hidden="true">贰</span>
+                    <h3>创建房间</h3>
+                  </div>
+                  <button class="command-button" id="remote-create-room-button" type="button">
+                    <i data-lucide="plus" aria-hidden="true"></i>
+                    <span>创建房间</span>
+                  </button>
+                </div>
+                <div class="online-command-row online-command-row--join">
+                  <label class="setup-label" for="remote-room-code">
+                    <span aria-hidden="true">叁</span>
+                    <h3>加入房间</h3>
+                  </label>
+                  <div class="join-controls">
+                    <input class="text-input room-code-input" id="remote-room-code" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="6" placeholder="房间码" aria-label="六位房间码" />
+                    <button class="command-button" id="remote-join-room-button" type="button">
+                      <i data-lucide="log-in" aria-hidden="true"></i>
+                      <span>加入</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="join-pending" id="join-pending-panel" hidden>
+              <span>等待房主同意</span>
+              <strong id="join-pending-room-code">------</strong>
+              <button class="command-button command-button--quiet" id="cancel-join-button" type="button">
+                <i data-lucide="x" aria-hidden="true"></i>
+                <span>取消加入</span>
+              </button>
             </div>
 
             <p class="online-error" id="online-error" role="alert" hidden></p>
@@ -148,6 +196,19 @@
               </div>
             </div>
             <p class="online-camp-line">你执 <strong id="online-player-camp">朱方</strong></p>
+            <div class="join-request" id="join-request-panel" hidden>
+              <p id="join-request-text">有玩家申请加入房间</p>
+              <div>
+                <button class="command-button command-button--quiet" id="reject-join-button" type="button">
+                  <i data-lucide="x" aria-hidden="true"></i>
+                  <span>拒绝</span>
+                </button>
+                <button class="command-button" id="accept-join-button" type="button">
+                  <i data-lucide="check" aria-hidden="true"></i>
+                  <span>同意加入</span>
+                </button>
+              </div>
+            </div>
             <p class="online-error" id="online-room-error" role="alert" hidden></p>
             <div class="setup-actions">
               <button class="command-button command-button--quiet" id="leave-room-button" type="button">

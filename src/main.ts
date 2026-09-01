@@ -1,5 +1,5 @@
 import "./styles.css";
-import { ArrowLeft, Check, ChevronRight, Copy, createIcons, House, LogIn, LogOut, Play, Plus, RefreshCw, RotateCcw, ScrollText, SlidersHorizontal, Swords, Volume2, VolumeX, Wifi, X } from "lucide";
+import { ArrowLeft, Check, ChevronRight, Copy, createIcons, House, LogIn, LogOut, Network, Play, Plus, RefreshCw, RotateCcw, ScrollText, SlidersHorizontal, Swords, Volume2, VolumeX, Wifi, X } from "lucide";
 import { AI_DIFFICULTIES, AI_DIFFICULTY_LABELS, chooseAiAction, type AiDifficulty } from "./ai";
 import {
   COLS,
@@ -27,6 +27,7 @@ import {
   onlineErrorMessage,
   saveOnlineSession,
   type ConnectionState,
+  type OnlineNetworkMode,
   type PublicCell,
   type PublicGameState,
   type PublicPiece,
@@ -69,26 +70,42 @@ const soloGameActionButtons = Array.from(document.querySelectorAll<HTMLButtonEle
 const onlineGameActionButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-online-game-action]"));
 const onlineStatusLine = element<HTMLElement>("online-status-line");
 const onlineConnectionStatusElement = element<HTMLElement>("online-connection-status");
+const onlineKickerElement = element<HTMLElement>("online-kicker");
+const onlineTitleElement = element<HTMLHeadingElement>("online-title");
 const onlineEntryElement = element<HTMLElement>("online-entry");
 const onlineRoomElement = element<HTMLElement>("online-room");
+const lanModeButton = element<HTMLButtonElement>("lan-mode-button");
+const lanEntryPanel = element<HTMLElement>("lan-entry-panel");
+const remoteEntryPanel = element<HTMLElement>("remote-entry-panel");
+const lanRoomListElement = element<HTMLElement>("lan-room-list");
 const onlineServerInput = element<HTMLInputElement>("online-server-input");
 const joinRoomCodeInput = element<HTMLInputElement>("join-room-code");
+const remoteRoomCodeInput = element<HTMLInputElement>("remote-room-code");
 const onlineErrorElement = element<HTMLElement>("online-error");
 const onlineRoomErrorElement = element<HTMLElement>("online-room-error");
 const createRoomButton = element<HTMLButtonElement>("create-room-button");
 const joinRoomButton = element<HTMLButtonElement>("join-room-button");
+const remoteCreateRoomButton = element<HTMLButtonElement>("remote-create-room-button");
+const remoteJoinRoomButton = element<HTMLButtonElement>("remote-join-room-button");
 const resumeRoomButton = element<HTMLButtonElement>("resume-room-button");
 const readyButton = element<HTMLButtonElement>("ready-button");
 const onlineRoomCodeElement = element<HTMLElement>("online-room-code");
 const onlinePlayerCampElement = element<HTMLElement>("online-player-camp");
 const onlineRedSeatElement = element<HTMLElement>("online-red-seat");
 const onlineBlackSeatElement = element<HTMLElement>("online-black-seat");
+const joinPendingPanel = element<HTMLElement>("join-pending-panel");
+const joinPendingRoomCodeElement = element<HTMLElement>("join-pending-room-code");
+const joinRequestPanel = element<HTMLElement>("join-request-panel");
+const acceptJoinButton = element<HTMLButtonElement>("accept-join-button");
+const rejectJoinButton = element<HTMLButtonElement>("reject-join-button");
+const cancelJoinButton = element<HTMLButtonElement>("cancel-join-button");
 const resultModeLabelElement = element<HTMLElement>("result-mode-label");
 const resultSecondaryLabelElement = element<HTMLElement>("result-secondary-label");
 const resultPrimaryLabelElement = element<HTMLElement>("result-primary-label");
 
 type View = "home" | "setup" | "online" | "game";
 type MatchMode = "solo" | "online";
+type JoinRejectReason = Extract<ServerMessage, { type: "join_rejected" }>["reason"];
 type DisplayGameState = GameState | PublicGameState;
 type DisplayCell = GameState["board"][number] | PublicCell;
 type DisplayPiece = Piece | PublicPiece;
@@ -113,10 +130,24 @@ let onlineActionPending = false;
 let onlineReconnectTimer: number | null = null;
 let onlineReconnectAttempt = 0;
 let lastOnlineEndpoint = onlineSession?.endpoint ?? onlineServerInput.value;
+const lanApi = window.ancientBeastDesktop?.lan;
+const lanSupported = lanApi?.supported === true;
+let onlineNetworkMode: OnlineNetworkMode = onlineSession?.networkMode === "lan" && lanSupported ? "lan" : "remote";
+let lanRooms: LanRoom[] = [];
+let lanNetworks: LanNetwork[] = [];
+let lanNetworksLoaded = false;
+let hostingLan = false;
+let pendingJoinRoomCode: string | null = null;
+let pendingJoinRequestId: string | null = null;
 const onlineConnection = new OnlineConnection({
   onMessage: handleOnlineMessage,
   onState: handleOnlineConnectionState,
 });
+lanApi?.onRoomsChanged((rooms) => {
+  lanRooms = rooms;
+  if (currentView === "online") renderOnline();
+});
+lanModeButton.hidden = !lanSupported;
 
 renderRankList();
 render();
@@ -139,10 +170,11 @@ element<HTMLButtonElement>("result-restart-button").addEventListener("click", ()
   else restartGame();
 });
 element<HTMLButtonElement>("pve-mode-button").addEventListener("click", openSetup);
-element<HTMLButtonElement>("online-mode-button").addEventListener("click", openOnline);
+lanModeButton.addEventListener("click", () => void openOnline("lan"));
+element<HTMLButtonElement>("remote-mode-button").addEventListener("click", () => void openOnline("remote"));
 element<HTMLButtonElement>("setup-button").addEventListener("click", openSetup);
 element<HTMLButtonElement>("result-setup-button").addEventListener("click", () => {
-  if (matchMode === "online") openOnline();
+  if (matchMode === "online") void openOnline(onlineNetworkMode);
   else openSetup();
 });
 element<HTMLButtonElement>("home-button").addEventListener("click", goHome);
@@ -153,18 +185,33 @@ element<HTMLButtonElement>("online-home-button").addEventListener("click", goHom
 element<HTMLButtonElement>("online-resign-button").addEventListener("click", resignOnlineGame);
 element<HTMLButtonElement>("leave-room-button").addEventListener("click", () => leaveOnlineRoom(false));
 element<HTMLButtonElement>("copy-room-code-button").addEventListener("click", copyOnlineRoomCode);
-createRoomButton.addEventListener("click", () => void beginOnlineRoom("create"));
-joinRoomButton.addEventListener("click", () => void beginOnlineRoom("join"));
+createRoomButton.addEventListener("click", () => void beginLanHost());
+joinRoomButton.addEventListener("click", () => void joinLanRoom(joinRoomCodeInput.value));
+remoteCreateRoomButton.addEventListener("click", () => void beginRemoteRoom("create"));
+remoteJoinRoomButton.addEventListener("click", () => void beginRemoteRoom("join"));
 resumeRoomButton.addEventListener("click", () => void resumeOnlineRoom(false));
 readyButton.addEventListener("click", toggleOnlineReady);
+acceptJoinButton.addEventListener("click", () => respondToJoinRequest(true));
+rejectJoinButton.addEventListener("click", () => respondToJoinRequest(false));
+cancelJoinButton.addEventListener("click", cancelPendingJoin);
+lanRoomListElement.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-lan-room-code]");
+  if (button?.dataset.lanRoomCode) void joinLanRoom(button.dataset.lanRoomCode);
+});
 joinRoomCodeInput.addEventListener("input", () => {
   joinRoomCodeInput.value = normalizeRoomCode(joinRoomCodeInput.value);
 });
 joinRoomCodeInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") void beginOnlineRoom("join");
+  if (event.key === "Enter") void joinLanRoom(joinRoomCodeInput.value);
+});
+remoteRoomCodeInput.addEventListener("input", () => {
+  remoteRoomCodeInput.value = normalizeRoomCode(remoteRoomCodeInput.value);
+});
+remoteRoomCodeInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") void beginRemoteRoom("join");
 });
 onlineServerInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") void beginOnlineRoom("create");
+  if (event.key === "Enter") void beginRemoteRoom("create");
 });
 soundButton.addEventListener("click", toggleSound);
 setupDifficultyButtons.forEach((button) => {
@@ -289,7 +336,11 @@ function startGame(): void {
 }
 
 function openSetup(): void {
-  if (matchMode === "online") stopOnlineConnection(true);
+  if (matchMode === "online") {
+    stopOnlineConnection(true);
+    void stopLanHost();
+    void lanApi?.stopDiscovery();
+  }
   matchMode = "solo";
   stopAiTurn();
   pendingAiDifficulty = aiDifficulty;
@@ -310,11 +361,19 @@ function goHome(): void {
     } else if (onlineSnapshot?.phase === "waiting") {
       onlineConnection.send({ type: "leave_room" });
       clearStoredOnlineSession();
+    } else if (pendingJoinRoomCode) {
+      onlineConnection.send({ type: "cancel_join" });
     }
-    window.setTimeout(() => onlineConnection.close(), 80);
+    window.setTimeout(() => {
+      onlineConnection.close();
+      void stopLanHost();
+    }, 80);
     stopOnlineReconnect();
     onlineSnapshot = null;
     onlineActionPending = false;
+    pendingJoinRoomCode = null;
+    pendingJoinRequestId = null;
+    void lanApi?.stopDiscovery();
   }
   currentView = "home";
   selectedIndex = null;
@@ -322,17 +381,41 @@ function goHome(): void {
   renderView();
 }
 
-function openOnline(): void {
+async function openOnline(mode: OnlineNetworkMode): Promise<void> {
+  if (mode === "lan" && !lanSupported) return;
   stopAiTurn();
-  if (matchMode === "online" && onlineSnapshot?.phase === "ended") onlineConnection.close();
+  if (matchMode === "online" && onlineSnapshot?.phase === "ended") {
+    onlineConnection.close();
+    await stopLanHost();
+  }
   matchMode = "online";
+  onlineNetworkMode = mode;
   currentView = "online";
   selectedIndex = null;
   setRulesOpen(false);
   onlineSnapshot = null;
   onlineActionPending = false;
-  onlineSession = loadOnlineSession(sessionStorage);
-  if (onlineSession) onlineServerInput.value = onlineSession.endpoint;
+  pendingJoinRoomCode = null;
+  pendingJoinRequestId = null;
+  const storedSession = loadOnlineSession(sessionStorage);
+  onlineSession = storedSession?.networkMode === mode ? storedSession : null;
+  if (onlineSession && mode === "remote") onlineServerInput.value = onlineSession.endpoint;
+  if (mode === "lan" && lanApi) {
+    lanNetworks = [];
+    lanNetworksLoaded = false;
+    void Promise.all([lanApi.startDiscovery(), lanApi.getNetworks()]).then(([rooms, networks]) => {
+      lanRooms = rooms;
+      lanNetworks = networks;
+      lanNetworksLoaded = true;
+      renderOnline();
+    }).catch(() => {
+      lanNetworksLoaded = true;
+      showOnlineError("无法搜索局域网房间，请检查系统网络权限");
+      renderOnline();
+    });
+  } else {
+    void lanApi?.stopDiscovery();
+  }
   renderOnline();
   renderView();
 }
@@ -384,7 +467,7 @@ function render(): void {
     : `${campLabel(opponentCamp)}方行棋`;
   redCountElement.textContent = String(countDisplayPieces(game, "red"));
   blackCountElement.textContent = String(countDisplayPieces(game, "black"));
-  matchModeLabelElement.textContent = matchMode === "online" ? "联机对战" : "人机大战";
+  matchModeLabelElement.textContent = matchMode === "online" ? onlineModeLabel() : "人机大战";
   matchDetailPrefixElement.childNodes[0].textContent = matchMode === "online" ? "房间 " : "难度 ";
   matchDifficultyElement.textContent = matchMode === "online" ? onlineSession?.roomCode ?? "------" : AI_DIFFICULTY_LABELS[aiDifficulty];
   redControllerElement.textContent = matchMode === "online"
@@ -398,9 +481,9 @@ function render(): void {
   moveLogElement.innerHTML = game.log.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("");
 
   resultBannerElement.hidden = currentView !== "game" || game.status === "playing";
-  resultModeLabelElement.textContent = matchMode === "online" ? "联机对局已定" : "本局已定";
-  resultSecondaryLabelElement.textContent = matchMode === "online" ? "返回联机" : "选择难度";
-  resultPrimaryLabelElement.textContent = matchMode === "online" ? "再开一房" : "再来一局";
+  resultModeLabelElement.textContent = matchMode === "online" ? `${onlineModeLabel()}已定` : "本局已定";
+  resultSecondaryLabelElement.textContent = matchMode === "online" ? onlineNetworkMode === "lan" ? "返回局域网" : "返回公网" : "选择难度";
+  resultPrimaryLabelElement.textContent = matchMode === "online" ? onlineNetworkMode === "lan" && !hostingLan ? "查找房间" : "再开一房" : "再来一局";
   if (game.status === "won") {
     const playerWon = game.winner === playerCamp;
     resultSealElement.textContent = playerWon ? "胜" : "负";
@@ -422,25 +505,48 @@ function renderSetup(): void {
 
 function renderOnline(): void {
   const waiting = onlineSnapshot?.phase === "waiting" && Boolean(onlineSession);
+  const joining = Boolean(pendingJoinRoomCode) && !onlineSession;
+  const resumable = onlineSession?.networkMode === onlineNetworkMode;
+  onlineKickerElement.textContent = onlineNetworkMode === "lan" ? "同网相逢" : "远程联机";
+  onlineTitleElement.textContent = onlineModeLabel();
   onlineEntryElement.hidden = waiting;
   onlineRoomElement.hidden = !waiting;
+  lanEntryPanel.hidden = onlineNetworkMode !== "lan" || joining;
+  remoteEntryPanel.hidden = onlineNetworkMode !== "remote" || joining;
+  joinPendingPanel.hidden = !joining;
+  if (pendingJoinRoomCode) joinPendingRoomCodeElement.textContent = pendingJoinRoomCode;
+  lanRoomListElement.innerHTML = lanSupported
+    ? lanRooms.length > 0
+      ? lanRooms.map((room) => `<button class="lan-room-button" type="button" data-lan-room-code="${room.roomCode}"${onlineBusy ? " disabled" : ""}><strong>${room.roomCode}</strong><span>${escapeHtml(room.host)}</span></button>`).join("")
+      : '<p class="lan-room-empty">暂未发现可加入的房间</p>'
+    : "";
   onlineServerInput.disabled = onlineBusy;
   joinRoomCodeInput.disabled = onlineBusy;
-  createRoomButton.disabled = onlineBusy;
-  joinRoomButton.disabled = onlineBusy;
-  resumeRoomButton.hidden = !onlineSession || Boolean(onlineSnapshot);
+  remoteRoomCodeInput.disabled = onlineBusy;
+  createRoomButton.disabled = onlineBusy || !lanSupported;
+  joinRoomButton.disabled = onlineBusy || !lanSupported;
+  remoteCreateRoomButton.disabled = onlineBusy;
+  remoteJoinRoomButton.disabled = onlineBusy;
+  cancelJoinButton.disabled = onlineBusy || onlineConnectionState !== "connected";
+  resumeRoomButton.hidden = !resumable || Boolean(onlineSnapshot) || joining;
   resumeRoomButton.disabled = onlineBusy;
 
   const connectionLabel = onlineConnectionState === "connecting"
     ? onlineReconnectAttempt > 0 ? "正在重连" : "正在连接"
     : onlineConnectionState === "connected"
-      ? waiting
+      ? joining ? "等待房主同意"
+        : waiting
         ? onlineSnapshot?.seats.red.occupied && onlineSnapshot.seats.black.occupied ? "等待双方准备" : "等待对手加入"
         : "已连接"
-      : onlineSession && !onlineSnapshot ? "可以恢复上次房间" : "未连接";
+      : resumable && !onlineSnapshot ? "可以恢复上次房间"
+        : onlineNetworkMode === "lan" ? lanNetworkLabel()
+        : "未连接";
   onlineConnectionStatusElement.textContent = connectionLabel;
   onlineStatusLine.dataset.state = onlineConnectionState === "connected" ? "connected" : onlineConnectionState === "connecting" ? "connecting" : "idle";
 
+  joinRequestPanel.hidden = !waiting || !pendingJoinRequestId || onlineSession?.seat !== "red";
+  acceptJoinButton.disabled = onlineBusy;
+  rejectJoinButton.disabled = onlineBusy;
   if (!waiting || !onlineSession || !onlineSnapshot) return;
   onlineRoomCodeElement.textContent = onlineSession.roomCode;
   onlinePlayerCampElement.textContent = `${campLabel(onlineSession.seat)}方`;
@@ -470,7 +576,41 @@ function renderView(): void {
   if (currentView !== "game") resultBannerElement.hidden = true;
 }
 
-async function beginOnlineRoom(kind: "create" | "join"): Promise<void> {
+async function beginLanHost(): Promise<void> {
+  if (!lanApi || onlineBusy) return;
+  clearOnlineErrors();
+  onlineBusy = true;
+  renderOnline();
+  try {
+    const host = await lanApi.startHost();
+    hostingLan = true;
+    await connectOnlineRoom("create", host.endpoint, "", true);
+  } catch {
+    onlineBusy = false;
+    hostingLan = false;
+    await lanApi.stopHost().catch(() => {});
+    showOnlineError("无法创建局域网房间，请检查系统网络权限");
+    renderOnline();
+  }
+}
+
+async function joinLanRoom(input: string): Promise<void> {
+  if (!lanApi || onlineBusy) return;
+  const roomCode = normalizeRoomCode(input);
+  if (!isValidRoomCode(roomCode)) {
+    showOnlineError("请输入六位房间码");
+    return;
+  }
+  const room = lanRooms.find((candidate) => candidate.roomCode === roomCode);
+  if (!room) {
+    showOnlineError("没有在局域网内发现这个房间");
+    return;
+  }
+  joinRoomCodeInput.value = roomCode;
+  await connectOnlineRoom("join", room.endpoint, roomCode, false);
+}
+
+async function beginRemoteRoom(kind: "create" | "join"): Promise<void> {
   if (onlineBusy) return;
   let endpoint: string;
   try {
@@ -479,28 +619,34 @@ async function beginOnlineRoom(kind: "create" | "join"): Promise<void> {
     showOnlineError("请检查服务器地址");
     return;
   }
-  const roomCode = normalizeRoomCode(joinRoomCodeInput.value);
+  const roomCode = normalizeRoomCode(remoteRoomCodeInput.value);
   if (kind === "join" && !isValidRoomCode(roomCode)) {
     showOnlineError("请输入六位房间码");
     return;
   }
+  await connectOnlineRoom(kind, endpoint, roomCode, false);
+}
 
+async function connectOnlineRoom(kind: "create" | "join", endpoint: string, roomCode: string, joinApproval: boolean): Promise<void> {
   clearStoredOnlineSession();
   onlineSnapshot = null;
+  pendingJoinRoomCode = null;
+  pendingJoinRequestId = null;
   lastOnlineEndpoint = endpoint;
-  onlineServerInput.value = endpoint;
+  if (onlineNetworkMode === "remote") onlineServerInput.value = endpoint;
   clearOnlineErrors();
   onlineBusy = true;
   renderOnline();
   try {
     await onlineConnection.connect(endpoint);
     const sent = kind === "create"
-      ? onlineConnection.send({ type: "create_room" })
+      ? onlineConnection.send(joinApproval ? { type: "create_room", joinApproval: true } : { type: "create_room" })
       : onlineConnection.send({ type: "join_room", roomCode });
     if (!sent) throw new Error("CONNECTION_CLOSED");
   } catch {
     onlineBusy = false;
     showOnlineError("无法连接服务器，请检查地址和服务器状态");
+    if (hostingLan) await stopLanHost();
     renderOnline();
   }
 }
@@ -508,7 +654,12 @@ async function beginOnlineRoom(kind: "create" | "join"): Promise<void> {
 async function resumeOnlineRoom(automatic: boolean): Promise<void> {
   const session = onlineSession ?? loadOnlineSession(sessionStorage);
   if (!session || onlineBusy) return;
+  if (session.networkMode === "lan" && !lanSupported) {
+    showOnlineError("局域网房间只能在桌面客户端中恢复");
+    return;
+  }
   onlineSession = session;
+  onlineNetworkMode = session.networkMode;
   lastOnlineEndpoint = session.endpoint;
   onlineBusy = true;
   clearOnlineErrors();
@@ -528,6 +679,32 @@ async function resumeOnlineRoom(automatic: boolean): Promise<void> {
 
 function handleOnlineMessage(message: ServerMessage): void {
   if (message.type === "welcome") return;
+  if (message.type === "join_pending") {
+    onlineBusy = false;
+    pendingJoinRoomCode = message.roomCode;
+    renderOnline();
+    return;
+  }
+  if (message.type === "join_requested") {
+    pendingJoinRequestId = message.joinRequestId;
+    onlineBusy = false;
+    void setLanRoomOpen(false);
+    renderOnline();
+    return;
+  }
+  if (message.type === "join_rejected") {
+    const wasJoining = Boolean(pendingJoinRoomCode);
+    pendingJoinRoomCode = null;
+    pendingJoinRequestId = null;
+    onlineBusy = false;
+    if (onlineSession?.seat === "red" && onlineSnapshot?.phase === "waiting" && !onlineSnapshot.seats.black.occupied) {
+      void setLanRoomOpen(true);
+    }
+    showOnlineError(joinRejectedMessage(message.reason), Boolean(onlineSnapshot));
+    if (wasJoining) window.setTimeout(() => onlineConnection.close(), 80);
+    renderOnline();
+    return;
+  }
   if (message.type === "error") {
     onlineBusy = false;
     onlineActionPending = false;
@@ -547,7 +724,10 @@ function handleOnlineMessage(message: ServerMessage): void {
     onlineActionPending = false;
     clearStoredOnlineSession();
     onlineSnapshot = null;
+    pendingJoinRoomCode = null;
+    pendingJoinRequestId = null;
     currentView = "online";
+    void stopLanHost();
     showOnlineError("房间已经关闭");
     renderOnline();
     renderView();
@@ -557,11 +737,14 @@ function handleOnlineMessage(message: ServerMessage): void {
     onlineBusy = false;
     onlineReconnectAttempt = 0;
     stopOnlineReconnect();
+    pendingJoinRoomCode = null;
+    pendingJoinRequestId = null;
     onlineSession = {
       endpoint: lastOnlineEndpoint,
       roomCode: message.roomCode,
       reconnectToken: message.reconnectToken,
       seat: message.seat,
+      networkMode: onlineNetworkMode,
     };
     playerCamp = message.seat;
     saveOnlineSession(sessionStorage, onlineSession);
@@ -575,11 +758,17 @@ function applyOnlineSnapshot(snapshot: PublicSnapshot): void {
   onlineSnapshot = snapshot;
   onlineBusy = false;
   onlineActionPending = false;
+  if (snapshot.seats.black.occupied) pendingJoinRequestId = null;
   clearOnlineErrors();
+  if (hostingLan && onlineSession?.seat === "red") {
+    const open = snapshot.phase === "waiting" && !snapshot.seats.black.occupied;
+    void setLanRoomOpen(open);
+  }
   if (snapshot.phase === "playing" || snapshot.phase === "ended") {
     matchMode = "online";
     currentView = "game";
     if (snapshot.phase === "ended") clearOnlineSession(sessionStorage);
+    void lanApi?.stopDiscovery();
     renderView();
     render();
   } else {
@@ -592,6 +781,10 @@ function applyOnlineSnapshot(snapshot: PublicSnapshot): void {
 function handleOnlineConnectionState(connectionState: ConnectionState, intentional: boolean): void {
   onlineConnectionState = connectionState;
   if (connectionState === "closed") onlineBusy = false;
+  if (connectionState === "closed" && !intentional && pendingJoinRoomCode) {
+    pendingJoinRoomCode = null;
+    showOnlineError("与房主的连接已经断开");
+  }
   if (connectionState === "closed" && !intentional && onlineSession && onlineSnapshot?.phase !== "ended") {
     scheduleOnlineReconnect();
   }
@@ -626,6 +819,25 @@ function toggleOnlineReady(): void {
   }
 }
 
+function respondToJoinRequest(accept: boolean): void {
+  if (!pendingJoinRequestId || onlineConnectionState !== "connected") return;
+  const message = accept
+    ? { type: "accept_join" as const, joinRequestId: pendingJoinRequestId }
+    : { type: "reject_join" as const, joinRequestId: pendingJoinRequestId };
+  if (!onlineConnection.send(message)) return;
+  onlineBusy = true;
+  renderOnline();
+}
+
+function cancelPendingJoin(): void {
+  if (!pendingJoinRoomCode) return;
+  onlineConnection.send({ type: "cancel_join" });
+  pendingJoinRoomCode = null;
+  onlineBusy = false;
+  window.setTimeout(() => onlineConnection.close(), 80);
+  renderOnline();
+}
+
 function resignOnlineGame(): void {
   if (onlineSnapshot?.phase !== "playing" || onlineConnectionState !== "connected" || onlineActionPending) return;
   onlineActionPending = onlineConnection.send({ type: "resign" });
@@ -638,21 +850,31 @@ function leaveOnlineRoom(goToHome: boolean): void {
   clearStoredOnlineSession();
   onlineSnapshot = null;
   onlineActionPending = false;
+  pendingJoinRoomCode = null;
+  pendingJoinRequestId = null;
   stopOnlineReconnect();
   currentView = goToHome ? "home" : "online";
-  window.setTimeout(() => onlineConnection.close(), 80);
+  window.setTimeout(() => {
+    onlineConnection.close();
+    void stopLanHost();
+  }, 80);
   renderOnline();
   renderView();
 }
 
 async function createAnotherOnlineRoom(): Promise<void> {
+  const networkMode = onlineSession?.networkMode ?? onlineNetworkMode;
+  const wasLanHost = hostingLan;
   const endpoint = onlineSession?.endpoint ?? lastOnlineEndpoint;
   stopOnlineConnection(true);
+  if (wasLanHost) await stopLanHost();
   onlineServerInput.value = endpoint;
-  currentView = "online";
-  renderOnline();
-  renderView();
-  await beginOnlineRoom("create");
+  await openOnline(networkMode);
+  if (networkMode === "lan") {
+    if (wasLanHost) await beginLanHost();
+    return;
+  }
+  await beginRemoteRoom("create");
 }
 
 function stopOnlineConnection(clearSession: boolean): void {
@@ -660,6 +882,8 @@ function stopOnlineConnection(clearSession: boolean): void {
   onlineConnection.close();
   onlineSnapshot = null;
   onlineActionPending = false;
+  pendingJoinRoomCode = null;
+  pendingJoinRequestId = null;
   onlineBusy = false;
   if (clearSession) clearStoredOnlineSession();
 }
@@ -667,6 +891,18 @@ function stopOnlineConnection(clearSession: boolean): void {
 function clearStoredOnlineSession(): void {
   clearOnlineSession(sessionStorage);
   onlineSession = null;
+}
+
+async function stopLanHost(): Promise<void> {
+  if (!hostingLan || !lanApi) return;
+  hostingLan = false;
+  await lanApi.stopHost().catch(() => {});
+}
+
+async function setLanRoomOpen(open: boolean): Promise<void> {
+  const roomCode = onlineSession?.roomCode;
+  if (!hostingLan || !lanApi || !roomCode) return;
+  await lanApi.setAdvertisedRoom({ roomCode, open }).catch(() => {});
 }
 
 function copyOnlineRoomCode(): void {
@@ -694,6 +930,16 @@ function clearOnlineErrors(): void {
   onlineRoomErrorElement.hidden = true;
   onlineErrorElement.textContent = "";
   onlineRoomErrorElement.textContent = "";
+}
+
+function joinRejectedMessage(reason: JoinRejectReason): string {
+  return {
+    rejected: "房主拒绝了加入申请",
+    cancelled: "加入申请已经取消",
+    timeout: "房主未在规定时间内处理申请",
+    disconnected: "申请加入的玩家已经断开",
+    host_unavailable: "房主已经离开房间",
+  }[reason];
 }
 
 function seatStatus(seat: PublicSnapshot["seats"][Camp], self: boolean): string {
@@ -728,6 +974,16 @@ function countDisplayPieces(game: DisplayGameState, camp: Camp): number {
 
 function campLabel(camp: Camp): string {
   return camp === "red" ? "朱" : "墨";
+}
+
+function onlineModeLabel(): string {
+  return onlineNetworkMode === "lan" ? "局域网对战" : "公网对战";
+}
+
+function lanNetworkLabel(): string {
+  if (!lanNetworksLoaded) return "正在识别局域网";
+  if (lanNetworks.length === 0) return "未检测到可用局域网";
+  return `当前局域网 ${lanNetworks.map((network) => `${network.address}（${network.subnet}）`).join(" · ")}`;
 }
 
 function renderCell(game: DisplayGameState, cell: DisplayCell, index: number, destinations: number[], disabled: boolean): string {
@@ -809,7 +1065,7 @@ function setRulesOpen(open: boolean): void {
 }
 
 function hydrateIcons(): void {
-  createIcons({ icons: { ArrowLeft, Check, ChevronRight, Copy, House, LogIn, LogOut, Play, Plus, RefreshCw, RotateCcw, ScrollText, SlidersHorizontal, Swords, Volume2, VolumeX, Wifi, X } });
+  createIcons({ icons: { ArrowLeft, Check, ChevronRight, Copy, House, LogIn, LogOut, Network, Play, Plus, RefreshCw, RotateCcw, ScrollText, SlidersHorizontal, Swords, Volume2, VolumeX, Wifi, X } });
 }
 
 function playTone(kind: "select" | "flip" | "move" | "restart"): void {

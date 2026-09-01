@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${ABC_SERVER_VERSION:-0.0.3}"
+VERSION="${ABC_SERVER_VERSION:-1.0.0}"
 REPOSITORY="${ABC_SERVER_REPOSITORY:-https://github.com/diegozhou114-cloud/ancient-beast-chess}"
 
 if [[ "$(uname -s)" != "Linux" ]]; then

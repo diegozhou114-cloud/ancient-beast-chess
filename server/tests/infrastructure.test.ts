@@ -29,13 +29,22 @@ describe("distribution and infrastructure", () => {
   });
 
   it("verifies the root server package boundary and executable bin", () => {
+    const projectManifest = JSON.parse(readFileSync(resolve(projectRoot, "package.json"), "utf8")) as { version: string };
+    const serverManifest = JSON.parse(readFileSync(resolve(serverRoot, "package.json"), "utf8")) as { version: string };
+    const protocolSource = readFileSync(resolve(serverRoot, "src/protocol.ts"), "utf8");
+    const installerSource = readFileSync(resolve(serverRoot, "install-server.sh"), "utf8");
+    expect(projectManifest.version).toBe("1.0.0");
+    expect(serverManifest.version).toBe(projectManifest.version);
+    expect(protocolSource).toContain(`SERVER_VERSION = "${projectManifest.version}"`);
+    expect(installerSource).toContain(`ABC_SERVER_VERSION:-${projectManifest.version}`);
+
     const output = execFileSync(npm, ["run", "server:pack:check"], {
       cwd: projectRoot,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
     });
     expect(output).toContain('"packageName":"ancient-beast-chess-server"');
-    expect(output).toContain('"filename":"ancient-beast-chess-server-0.0.3.tgz"');
+    expect(output).toContain(`"filename":"ancient-beast-chess-server-${projectManifest.version}.tgz"`);
     expect(output).toContain('"cliMode":"755"');
   }, 15_000);
 
@@ -45,5 +54,14 @@ describe("distribution and infrastructure", () => {
     const source = readFileSync(installer, "utf8");
     expect(source).toContain('ASSET="ancient-beast-chess-server-${VERSION}.tgz"');
     expect(source).not.toContain("-linux-${ARCH}.tgz");
+  });
+
+  it("keeps the updater syntax valid and requires an explicit target version", () => {
+    const updater = resolve(serverRoot, "update-server.sh");
+    execFileSync("bash", ["-n", updater]);
+    const source = readFileSync(updater, "utf8");
+    expect(source).toContain('TARGET_VERSION="${1:-${ABC_SERVER_VERSION:-}}"');
+    expect(source).toContain('systemctl restart "$SERVICE_NAME"');
+    expect(source).toContain('Rollback command: $0 ${CURRENT_VERSION}');
   });
 });

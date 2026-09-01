@@ -21,6 +21,7 @@ import type {
 
 const CAMPS: readonly Camp[] = ["red", "black"];
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const JOIN_APPROVAL_TIMEOUT_MS = 30_000;
 
 export interface ClientPeer {
   id: string;
@@ -44,6 +45,13 @@ interface RoomOutcome {
   reason: OutcomeReason;
 }
 
+interface PendingJoin {
+  id: string;
+  peer: ClientPeer;
+  requestId?: string;
+  expiresAt: number;
+}
+
 interface Room {
   code: string;
   version: number;
@@ -54,6 +62,8 @@ interface Room {
   seats: Record<Camp, SeatState | null>;
   game: GameState | null;
   outcome: RoomOutcome | null;
+  joinApproval: boolean;
+  pendingJoin: PendingJoin | null;
 }
 
 export class ProtocolError extends Error {
@@ -67,6 +77,7 @@ export class ProtocolError extends Error {
 
 export class RoomManager {
   private readonly rooms = new Map<string, Room>();
+  private readonly pendingRoomByPeerId = new Map<string, string>();
 
   constructor(
     private readonly config: ServerConfig,
@@ -86,7 +97,7 @@ export class RoomManager {
     return count;
   }
 
-  createRoom(peer: ClientPeer, requestId?: string): void {
+  createRoom(peer: ClientPeer, joinApproval = false, requestId?: string): void {
     this.assertUnbound(peer);
     if (this.rooms.size >= this.config.maxRooms) {
       throw new ProtocolError("ROOM_LIMIT_REACHED", "The server room limit has been reached");
@@ -104,6 +115,8 @@ export class RoomManager {
       seats: { red: this.newSeat(peer), black: null },
       game: null,
       outcome: null,
+      joinApproval,
+      pendingJoin: null,
     };
     this.rooms.set(code, room);
     this.bind(peer, room, "red");
@@ -120,12 +133,61 @@ export class RoomManager {
     const camp = CAMPS.find((candidate) => room.seats[candidate] === null);
     if (!camp) throw new ProtocolError("ROOM_FULL", "Room already has two players");
 
-    room.seats[camp] = this.newSeat(peer);
-    this.bind(peer, room, camp);
-    room.version += 1;
-    this.sendJoined(peer, room, camp, requestId);
-    this.broadcast(room, peer.id);
-    this.logger.log("info", "room_joined", { roomCode, connectionId: peer.id, seat: camp });
+    if (room.joinApproval) {
+      const host = room.seats.red?.peer;
+      if (!host) throw new ProtocolError("ROOM_NOT_JOINABLE", "The room host is unavailable");
+      if (room.pendingJoin) throw new ProtocolError("JOIN_REQUEST_PENDING", "Another join request is already pending");
+      const pendingJoin: PendingJoin = {
+        id: randomBytes(16).toString("base64url"),
+        peer,
+        requestId,
+        expiresAt: this.now() + JOIN_APPROVAL_TIMEOUT_MS,
+      };
+      room.pendingJoin = pendingJoin;
+      this.pendingRoomByPeerId.set(peer.id, room.code);
+      peer.send({ type: "join_pending", roomCode: room.code });
+      host.send({ type: "join_requested", roomCode: room.code, joinRequestId: pendingJoin.id });
+      this.logger.log("info", "join_requested", { roomCode, connectionId: peer.id });
+      return;
+    }
+
+    this.admitPeer(room, peer, camp, requestId);
+  }
+
+  acceptJoin(peer: ClientPeer, joinRequestId: string): void {
+    const room = this.requireHost(peer);
+    const pending = room.pendingJoin;
+    if (!pending || pending.id !== joinRequestId) {
+      throw new ProtocolError("JOIN_REQUEST_NOT_FOUND", "Join request not found");
+    }
+    if (this.now() >= pending.expiresAt) {
+      this.closePendingJoin(room, "timeout");
+      throw new ProtocolError("JOIN_REQUEST_NOT_FOUND", "Join request has expired");
+    }
+    if (room.phase !== "waiting" || room.seats.black) {
+      this.closePendingJoin(room, "host_unavailable");
+      throw new ProtocolError("ROOM_NOT_JOINABLE", "Room is not accepting players");
+    }
+    room.pendingJoin = null;
+    this.pendingRoomByPeerId.delete(pending.peer.id);
+    this.admitPeer(room, pending.peer, "black", pending.requestId);
+  }
+
+  rejectJoin(peer: ClientPeer, joinRequestId: string): void {
+    const room = this.requireHost(peer);
+    if (!room.pendingJoin || room.pendingJoin.id !== joinRequestId) {
+      throw new ProtocolError("JOIN_REQUEST_NOT_FOUND", "Join request not found");
+    }
+    this.closePendingJoin(room, "rejected");
+  }
+
+  cancelJoin(peer: ClientPeer): void {
+    const roomCode = this.pendingRoomByPeerId.get(peer.id);
+    const room = roomCode ? this.rooms.get(roomCode) : null;
+    if (!room || room.pendingJoin?.peer !== peer) {
+      throw new ProtocolError("JOIN_REQUEST_NOT_FOUND", "Join request not found");
+    }
+    this.closePendingJoin(room, "cancelled");
   }
 
   resume(peer: ClientPeer, roomCode: string, token: string, requestId?: string): void {
@@ -214,6 +276,7 @@ export class RoomManager {
       throw new ProtocolError("NOT_READYABLE", "A room can only be left before the game starts");
     }
 
+    if (peer.seat === "red" && room.pendingJoin) this.closePendingJoin(room, "host_unavailable");
     room.seats[peer.seat!] = null;
     this.unbind(peer);
     room.version += 1;
@@ -225,6 +288,12 @@ export class RoomManager {
   }
 
   disconnect(peer: ClientPeer): void {
+    const pendingRoomCode = this.pendingRoomByPeerId.get(peer.id);
+    const pendingRoom = pendingRoomCode ? this.rooms.get(pendingRoomCode) : null;
+    if (pendingRoom?.pendingJoin?.peer === peer) {
+      this.closePendingJoin(pendingRoom, "disconnected", true, false);
+      return;
+    }
     if (!peer.roomCode || !peer.seat) return;
     const room = this.rooms.get(peer.roomCode);
     const seat = room?.seats[peer.seat];
@@ -239,6 +308,7 @@ export class RoomManager {
     seat.reconnectDeadlineAt = disconnectedAt + this.config.reconnectGraceMs;
     const roomCode = room.code;
     const camp = peer.seat;
+    if (camp === "red" && room.pendingJoin) this.closePendingJoin(room, "host_unavailable");
     this.unbind(peer);
     room.version += 1;
     this.broadcast(room);
@@ -253,6 +323,9 @@ export class RoomManager {
   runMaintenance(): void {
     const now = this.now();
     for (const room of [...this.rooms.values()]) {
+      if (room.pendingJoin && now >= room.pendingJoin.expiresAt) {
+        this.closePendingJoin(room, "timeout");
+      }
       if (room.phase === "ended") {
         if (room.endedAt !== null && now - room.endedAt >= this.config.endedRetentionMs) {
           this.deleteRoom(room, "retention_expired");
@@ -317,6 +390,15 @@ export class RoomManager {
     };
   }
 
+  private admitPeer(room: Room, peer: ClientPeer, camp: Camp, requestId?: string): void {
+    room.seats[camp] = this.newSeat(peer);
+    this.bind(peer, room, camp);
+    room.version += 1;
+    this.sendJoined(peer, room, camp, requestId);
+    this.broadcast(room, peer.id);
+    this.logger.log("info", "room_joined", { roomCode: room.code, connectionId: peer.id, seat: camp });
+  }
+
   private bind(peer: ClientPeer, room: Room, camp: Camp): void {
     peer.roomCode = room.code;
     peer.seat = camp;
@@ -329,6 +411,36 @@ export class RoomManager {
 
   private assertUnbound(peer: ClientPeer): void {
     if (peer.roomCode) throw new ProtocolError("ALREADY_IN_ROOM", "Connection is already bound to a room");
+    if (this.pendingRoomByPeerId.has(peer.id)) {
+      throw new ProtocolError("JOIN_REQUEST_PENDING", "Connection already has a pending join request");
+    }
+  }
+
+  private requireHost(peer: ClientPeer): Room {
+    if (!peer.roomCode || peer.seat !== "red") {
+      throw new ProtocolError("NOT_ROOM_HOST", "Only the room host can manage join requests");
+    }
+    const room = this.rooms.get(peer.roomCode);
+    if (!room || room.seats.red?.peer !== peer) {
+      throw new ProtocolError("NOT_ROOM_HOST", "Only the room host can manage join requests");
+    }
+    return room;
+  }
+
+  private closePendingJoin(
+    room: Room,
+    reason: Extract<ServerMessage, { type: "join_rejected" }>["reason"],
+    notifyHost = true,
+    notifyJoiner = true,
+  ): void {
+    const pending = room.pendingJoin;
+    if (!pending) return;
+    room.pendingJoin = null;
+    this.pendingRoomByPeerId.delete(pending.peer.id);
+    const message: ServerMessage = { type: "join_rejected", roomCode: room.code, reason };
+    if (notifyJoiner) pending.peer.send(message);
+    const host = room.seats.red?.peer;
+    if (notifyHost && host && host !== pending.peer) host.send(message);
   }
 
   private requireSeat(peer: ClientPeer): { room: Room; seat: SeatState } {
@@ -371,6 +483,7 @@ export class RoomManager {
 
   private deleteRoom(room: Room, reason: "waiting_timeout" | "retention_expired" | "empty"): void {
     if (!this.rooms.delete(room.code)) return;
+    if (room.pendingJoin) this.closePendingJoin(room, "host_unavailable", false);
     for (const camp of CAMPS) {
       const peer = room.seats[camp]?.peer;
       if (!peer) continue;

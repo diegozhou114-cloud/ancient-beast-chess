@@ -1,0 +1,3 @@
+76e30e646133162d6583c145e7cb3243583b6bdf79ddfc67a40c57b48bb74a37  Ancient Beast Chess-1.0.0-arm64.dmg
+702a00981551883dbf2769224ab42f1670e4eee60bc0d7a2aa3700628dd97637  Ancient-Beast-Chess-1.0.0-win-x64.zip
+78f07288a2c7ae0ef0ad791e432e0ba6793af71dd49d5e4689c21ad80b5d35fd  ancient-beast-chess-server-1.0.0.tgz

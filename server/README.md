@@ -1,6 +1,6 @@
 # Ancient Beast Chess Server
 
-暗兽棋 v0.0.3 的权威联机服务器。服务器在内存中管理多个双人房间，使用现有 TypeScript 规则校验每一步，并通过 WebSocket 发送不泄露暗子身份的公开快照。
+暗兽棋 v1.0.0 的权威联机服务器。服务器在内存中管理多个双人房间，使用现有 TypeScript 规则校验每一步，并通过 WebSocket 发送不泄露暗子身份的公开快照。
 
 ## 本地运行
 
@@ -28,7 +28,7 @@ npm start
 在包发布后可直接运行：
 
 ```bash
-npx --yes ancient-beast-chess-server@0.0.3
+npx --yes ancient-beast-chess-server@1.0.0
 ```
 
 截至 2026-08-31，npm registry 查询 `ancient-beast-chess-server` 返回 `E404`，未发现已发布的同名包；这不构成包名预留。本仓库没有执行 npm 发布。
@@ -56,13 +56,21 @@ npx --yes ancient-beast-chess-server@0.0.3
 
 ## 重要限制
 
-- v0.0.3 只使用进程内 `Map` 保存房间；服务器重启、进程崩溃或容器替换会丢失全部房间。
+- v1.0.0 只使用进程内 `Map` 保存房间；服务器重启、进程崩溃或容器替换会丢失全部房间。
 - 单进程可管理多个房间；不会为每个房间派生进程。
 - 不包含账号、随机匹配、聊天、观战、排行榜、持久化或跨服务器发现；客户端联机 UI 位于仓库根项目，不打进服务器 npm 包。
 - 反向代理必须支持 WebSocket upgrade；公网部署应使用 TLS，即 `wss://`。默认忽略客户端发送的 `X-Forwarded-For`。
 - 只有在后端端口已绑定到回环地址或由防火墙限制为可信代理后，才能设置 `ABC_TRUST_PROXY=true`；代理必须覆盖而非追加客户端提供的 `X-Forwarded-For`。
 
 完整消息格式见 [协议文档](docs/protocol-zh.md)，各 Linux 发行版安装方式见 [部署文档](docs/deployment-zh.md)。
+
+已安装实例可使用仓库中的显式版本更新脚本。脚本先校验 Release 包的 SHA-256，再安装、重启已有 systemd 服务，并核对 `/health` 与 `/info` 报告的版本：
+
+```bash
+bash update-server.sh 1.0.0
+```
+
+更新脚本不修改防火墙；失败时会保留并打印上一版本的回滚命令。
 
 ## 验证
 

@@ -2,7 +2,7 @@
 
 目标支持 Ubuntu 22.04/24.04、Debian 12，以及 Rocky Linux 9、AlmaLinux 9、CentOS Stream 9 的 x64/arm64 环境。Node.js 最低版本为 20。CentOS 7 已结束常规生命周期且系统库过旧，本项目不承诺支持。
 
-v0.0.3 使用内存房间，服务重启会丢失所有正在等待、进行中和已结束但尚未清理的房间。不要配置多个无共享状态的副本来承接同一个房间；本版本没有跨服务器发现或会话迁移。
+v1.0.0 使用内存房间，服务重启会丢失所有正在等待、进行中和已结束但尚未清理的房间。不要配置多个无共享状态的副本来承接同一个房间；本版本没有跨服务器发现或会话迁移。
 
 ## 方式一：Docker Compose
 
@@ -104,18 +104,26 @@ sudo systemctl status ancient-beast-chess-server
 
 ## 方式三：Release 安装脚本
 
-`install-server.sh` 面向未来授权发布的 `server-v0.0.3` GitHub Release。服务器是架构无关的纯 JavaScript 包；脚本仍会检查系统为 Linux x64/arm64，但两种架构都下载真实 npm pack 产物 `ancient-beast-chess-server-0.0.3.tgz` 及 `ancient-beast-chess-server-0.0.3.tgz.sha256`，校验 SHA-256 后才执行全局 npm 安装：
+`install-server.sh` 面向 `server-v1.0.0` GitHub Release。服务器是架构无关的纯 JavaScript 包；脚本仍会检查系统为 Linux x64/arm64，但两种架构都下载真实 npm pack 产物 `ancient-beast-chess-server-1.0.0.tgz` 及 `ancient-beast-chess-server-1.0.0.tgz.sha256`，校验 SHA-256 后才执行全局 npm 安装：
 
 ```bash
 bash server/install-server.sh
 ```
 
-本任务没有创建或发布 GitHub Release，因此在对应制品发布前脚本会明确下载失败。脚本不会绕过校验，也不会静默修改系统防火墙或云安全组。
+对应制品发布前脚本会明确下载失败。脚本不会绕过校验，也不会静默修改系统防火墙或云安全组。
+
+已有全局安装可用明确目标版本进行更新；脚本会识别同名 systemd 服务，重启后同时检查 `/health` 与 `/info`，并打印上一版本的回滚命令：
+
+```bash
+bash server/update-server.sh 1.0.0
+```
+
+自定义服务名或本地健康检查地址时，可设置 `ABC_SERVER_SERVICE` 与 `ABC_SERVER_HEALTH_URL`。更新脚本不会从“latest”接口猜测版本，也不会创建 systemd 服务。
 
 包发布后也可使用 npm registry：
 
 ```bash
-npx --yes ancient-beast-chess-server@0.0.3
+npx --yes ancient-beast-chess-server@1.0.0
 ```
 
 ## 网络与 TLS

@@ -279,11 +279,20 @@ export class AncientBeastServer {
       switch (message.type) {
         case "create_room":
           this.assertRoomOperationAllowed(session);
-          this.manager.createRoom(session, message.requestId);
+          this.manager.createRoom(session, message.joinApproval ?? false, message.requestId);
           break;
         case "join_room":
           this.assertRoomOperationAllowed(session);
           this.manager.joinRoom(session, message.roomCode, message.requestId);
+          break;
+        case "accept_join":
+          this.manager.acceptJoin(session, message.joinRequestId);
+          break;
+        case "reject_join":
+          this.manager.rejectJoin(session, message.joinRequestId);
+          break;
+        case "cancel_join":
+          this.manager.cancelJoin(session);
           break;
         case "resume":
           this.assertRoomOperationAllowed(session);

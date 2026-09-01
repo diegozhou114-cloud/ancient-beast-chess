@@ -48,8 +48,11 @@ export interface PublicSnapshot {
 }
 
 export type ClientMessage =
-  | { type: "create_room"; requestId?: string }
+  | { type: "create_room"; joinApproval?: boolean; requestId?: string }
   | { type: "join_room"; roomCode: string; requestId?: string }
+  | { type: "accept_join"; joinRequestId: string; requestId?: string }
+  | { type: "reject_join"; joinRequestId: string; requestId?: string }
+  | { type: "cancel_join"; requestId?: string }
   | { type: "resume"; roomCode: string; reconnectToken: string; requestId?: string }
   | { type: "ready"; ready: boolean; requestId?: string }
   | { type: "action"; version: number; action: Action; requestId?: string }
@@ -59,15 +62,21 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: "welcome"; protocolVersion: string; serverVersion: string; connectionId: string }
   | { type: "room_joined"; requestId?: string; roomCode: string; seat: Camp; reconnectToken: string; snapshot: PublicSnapshot }
+  | { type: "join_pending"; roomCode: string }
+  | { type: "join_requested"; roomCode: string; joinRequestId: string }
+  | { type: "join_rejected"; roomCode: string; reason: "rejected" | "cancelled" | "timeout" | "disconnected" | "host_unavailable" }
   | { type: "snapshot"; snapshot: PublicSnapshot }
   | { type: "room_closed"; roomCode: string; reason: string }
   | { type: "error"; requestId?: string; code: string; message: string };
+
+export type OnlineNetworkMode = "lan" | "remote";
 
 export interface OnlineSession {
   endpoint: string;
   roomCode: string;
   reconnectToken: string;
   seat: Camp;
+  networkMode: OnlineNetworkMode;
 }
 
 export type ConnectionState = "idle" | "connecting" | "connected" | "closed";
@@ -200,7 +209,13 @@ export function loadOnlineSession(storage: Storage): OnlineSession | null {
     if (typeof value.roomCode !== "string" || !isValidRoomCode(value.roomCode)) return null;
     if (value.seat !== "red" && value.seat !== "black") return null;
     if (!value.reconnectToken) return null;
-    return value as OnlineSession;
+    return {
+      endpoint: value.endpoint,
+      roomCode: value.roomCode,
+      reconnectToken: value.reconnectToken,
+      seat: value.seat,
+      networkMode: value.networkMode === "lan" ? "lan" : "remote",
+    };
   } catch {
     return null;
   }
@@ -232,6 +247,10 @@ export function onlineErrorMessage(code: string): string {
     OUT_OF_TURN: "还没有轮到你",
     NOT_PLAYING: "当前房间尚未开始",
     NOT_READYABLE: "当前不能更改准备状态",
+    JOIN_APPROVAL_REQUIRED: "这个房间需要房主同意",
+    JOIN_REQUEST_PENDING: "房间已有一位玩家等待房主处理",
+    JOIN_REQUEST_NOT_FOUND: "加入申请已失效",
+    NOT_ROOM_HOST: "只有房主可以处理加入申请",
   };
   return messages[code] ?? "服务器未能完成操作";
 }
@@ -260,7 +279,7 @@ function isOnlineLegalMove(state: PublicGameState, from: number, to: number): bo
   return canCapture(mover.rank, target.base.rank);
 }
 
-function parseServerMessage(raw: unknown): ServerMessage | null {
+export function parseServerMessage(raw: unknown): ServerMessage | null {
   if (typeof raw !== "string") return null;
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
@@ -274,6 +293,18 @@ function parseServerMessage(raw: unknown): ServerMessage | null {
       if (typeof value.roomCode !== "string" || typeof value.reconnectToken !== "string") return null;
       if (value.seat !== "red" && value.seat !== "black") return null;
       return isPublicSnapshot(value.snapshot) ? value as ServerMessage : null;
+    }
+    if (value.type === "join_pending") {
+      return typeof value.roomCode === "string" && isValidRoomCode(value.roomCode) ? value as ServerMessage : null;
+    }
+    if (value.type === "join_requested") {
+      if (typeof value.roomCode !== "string" || !isValidRoomCode(value.roomCode)) return null;
+      return typeof value.joinRequestId === "string" && value.joinRequestId.length > 0 && value.joinRequestId.length <= 64 ? value as ServerMessage : null;
+    }
+    if (value.type === "join_rejected") {
+      const reasons = ["rejected", "cancelled", "timeout", "disconnected", "host_unavailable"];
+      if (typeof value.roomCode !== "string" || !isValidRoomCode(value.roomCode)) return null;
+      return typeof value.reason === "string" && reasons.includes(value.reason) ? value as ServerMessage : null;
     }
     if (value.type === "error") {
       return typeof value.code === "string" && typeof value.message === "string" ? value as ServerMessage : null;

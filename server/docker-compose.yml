@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: server/Dockerfile
-    image: ancient-beast-chess-server:0.0.3
+    image: ancient-beast-chess-server:1.0.0
     restart: unless-stopped
     init: true
     ports:

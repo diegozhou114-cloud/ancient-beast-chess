@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Action, Camp, GameStatus, LayerMode, Rank } from "../../src/game.js";
 
 export const PROTOCOL_VERSION = "abc-ws/1";
-export const SERVER_VERSION = "0.0.3";
+export const SERVER_VERSION = "1.0.0";
 
 export const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("flip"), at: z.number().int().min(0).max(19) }).strict(),
@@ -14,11 +14,15 @@ export const actionSchema = z.discriminatedUnion("type", [
 ]);
 
 const requestIdSchema = z.string().min(1).max(64).optional();
+const joinRequestIdSchema = z.string().min(1).max(64);
 const roomCodeSchema = z.string().regex(/^[A-HJ-NP-Z2-9]{6}$/);
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("create_room"), requestId: requestIdSchema }).strict(),
+  z.object({ type: z.literal("create_room"), joinApproval: z.boolean().optional(), requestId: requestIdSchema }).strict(),
   z.object({ type: z.literal("join_room"), roomCode: roomCodeSchema, requestId: requestIdSchema }).strict(),
+  z.object({ type: z.literal("accept_join"), joinRequestId: joinRequestIdSchema, requestId: requestIdSchema }).strict(),
+  z.object({ type: z.literal("reject_join"), joinRequestId: joinRequestIdSchema, requestId: requestIdSchema }).strict(),
+  z.object({ type: z.literal("cancel_join"), requestId: requestIdSchema }).strict(),
   z.object({
     type: z.literal("resume"),
     roomCode: roomCodeSchema,
@@ -96,6 +100,9 @@ export type ErrorCode =
   | "ROOM_NOT_FOUND"
   | "ROOM_FULL"
   | "ROOM_NOT_JOINABLE"
+  | "JOIN_REQUEST_PENDING"
+  | "JOIN_REQUEST_NOT_FOUND"
+  | "NOT_ROOM_HOST"
   | "ALREADY_IN_ROOM"
   | "NOT_IN_ROOM"
   | "NOT_READYABLE"
@@ -121,6 +128,13 @@ export type ServerMessage =
       seat: Camp;
       reconnectToken: string;
       snapshot: PublicSnapshot;
+    }
+  | { type: "join_pending"; roomCode: string }
+  | { type: "join_requested"; roomCode: string; joinRequestId: string }
+  | {
+      type: "join_rejected";
+      roomCode: string;
+      reason: "rejected" | "cancelled" | "timeout" | "disconnected" | "host_unavailable";
     }
   | { type: "snapshot"; snapshot: PublicSnapshot }
   | { type: "room_closed"; roomCode: string; reason: "waiting_timeout" | "retention_expired" | "empty" }
