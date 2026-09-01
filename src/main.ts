@@ -17,7 +17,9 @@ import {
   type Piece,
 } from "./game";
 import {
+  CLIENT_VERSION,
   OnlineConnection,
+  OnlineCompatibilityError,
   clearOnlineSession,
   getOnlineLegalDestinations,
   isValidRoomCode,
@@ -102,6 +104,7 @@ const cancelJoinButton = element<HTMLButtonElement>("cancel-join-button");
 const resultModeLabelElement = element<HTMLElement>("result-mode-label");
 const resultSecondaryLabelElement = element<HTMLElement>("result-secondary-label");
 const resultPrimaryLabelElement = element<HTMLElement>("result-primary-label");
+const clientVersionElement = element<HTMLElement>("client-version");
 
 type View = "home" | "setup" | "online" | "game";
 type MatchMode = "solo" | "online";
@@ -148,6 +151,7 @@ lanApi?.onRoomsChanged((rooms) => {
   if (currentView === "online") renderOnline();
 });
 lanModeButton.hidden = !lanSupported;
+clientVersionElement.textContent = `v${CLIENT_VERSION}`;
 
 renderRankList();
 render();
@@ -643,9 +647,9 @@ async function connectOnlineRoom(kind: "create" | "join", endpoint: string, room
       ? onlineConnection.send(joinApproval ? { type: "create_room", joinApproval: true } : { type: "create_room" })
       : onlineConnection.send({ type: "join_room", roomCode });
     if (!sent) throw new Error("CONNECTION_CLOSED");
-  } catch {
+  } catch (error) {
     onlineBusy = false;
-    showOnlineError("无法连接服务器，请检查地址和服务器状态");
+    if (!showCompatibilityError(error)) showOnlineError("无法连接服务器，请检查地址和服务器状态");
     if (hostingLan) await stopLanHost();
     renderOnline();
   }
@@ -669,10 +673,12 @@ async function resumeOnlineRoom(automatic: boolean): Promise<void> {
     if (!onlineConnection.send({ type: "resume", roomCode: session.roomCode, reconnectToken: session.reconnectToken })) {
       throw new Error("CONNECTION_CLOSED");
     }
-  } catch {
+  } catch (error) {
     onlineBusy = false;
-    if (automatic) scheduleOnlineReconnect();
-    else showOnlineError("恢复失败，请检查服务器状态");
+    if (!showCompatibilityError(error, Boolean(onlineSnapshot))) {
+      if (automatic) scheduleOnlineReconnect();
+      else showOnlineError("恢复失败，请检查服务器状态");
+    }
     renderOnline();
   }
 }
@@ -923,6 +929,15 @@ function showOnlineError(message: string, inRoom = false): void {
   const target = inRoom ? onlineRoomErrorElement : onlineErrorElement;
   target.textContent = message;
   target.hidden = false;
+}
+
+function showCompatibilityError(error: unknown, inRoom = false): boolean {
+  if (!(error instanceof OnlineCompatibilityError)) return false;
+  const subject = error.code === "SERVER_VERSION_MISMATCH" ? "游戏版本" : "联机协议";
+  const message = `${subject}不兼容：客户端 ${error.expected}，服务器 ${error.actual}。无法创建、加入或恢复房间，请更新客户端或服务器。`;
+  showOnlineError(message, inRoom);
+  window.alert(message);
+  return true;
 }
 
 function clearOnlineErrors(): void {

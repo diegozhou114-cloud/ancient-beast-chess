@@ -2,18 +2,30 @@
 set -euo pipefail
 
 TARGET_VERSION="${1:-${ABC_SERVER_VERSION:-}}"
+FORCE_REINSTALL=false
 REPOSITORY="${ABC_SERVER_REPOSITORY:-https://github.com/diegozhou114-cloud/ancient-beast-chess}"
 SERVICE_NAME="${ABC_SERVER_SERVICE:-ancient-beast-chess-server.service}"
 HEALTH_URL="${ABC_SERVER_HEALTH_URL:-http://127.0.0.1:8787}"
+EXPECTED_PROTOCOL_VERSION="${ABC_SERVER_PROTOCOL_VERSION:-abc-ws/2}"
 PACKAGE_NAME="ancient-beast-chess-server"
+
+if (( $# > 2 )); then
+  echo "Usage: $0 <version> [--force]" >&2
+  exit 1
+elif [[ "${2:-}" == "--force" ]]; then
+  FORCE_REINSTALL=true
+elif [[ -n "${2:-}" ]]; then
+  echo "Usage: $0 <version> [--force]" >&2
+  exit 1
+fi
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "This updater supports Linux only." >&2
   exit 1
 fi
 if [[ ! "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Usage: $0 <version>" >&2
-  echo "Example: $0 1.0.0" >&2
+  echo "Usage: $0 <version> [--force]" >&2
+  echo "Example: $0 1.0.0 --force" >&2
   exit 1
 fi
 
@@ -66,18 +78,22 @@ download_and_verify() {
   echo "SHA-256 verified: ${actual}"
 }
 
-verify_endpoint_version() {
+verify_endpoint_compatibility() {
   local endpoint="$1"
   local output_file="$2"
   curl --fail --silent --show-error "$endpoint" --output "$output_file" || return 1
-  node -e 'const fs=require("node:fs"); const body=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (body.serverVersion !== process.argv[2]) process.exit(1);' "$output_file" "$TARGET_VERSION"
+  node -e 'const fs=require("node:fs"); const body=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (body.serverVersion !== process.argv[2] || body.protocolVersion !== process.argv[3]) process.exit(1);' "$output_file" "$TARGET_VERSION" "$EXPECTED_PROTOCOL_VERSION"
 }
 
 CURRENT_VERSION="$(installed_version)"
-if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" ]]; then
+if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" && "$FORCE_REINSTALL" != true ]]; then
   echo "${PACKAGE_NAME} ${TARGET_VERSION} is already installed. Verifying the running service..."
 else
-  echo "Updating ${PACKAGE_NAME} from ${CURRENT_VERSION:-not-installed} to ${TARGET_VERSION}..."
+  if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" ]]; then
+    echo "Reinstalling ${PACKAGE_NAME} ${TARGET_VERSION}..."
+  else
+    echo "Updating ${PACKAGE_NAME} from ${CURRENT_VERSION:-not-installed} to ${TARGET_VERSION}..."
+  fi
   download_and_verify "$TARGET_VERSION"
   run_privileged npm install --global "${TEMP_DIR}/${PACKAGE_NAME}-${TARGET_VERSION}.tgz"
 fi
@@ -92,15 +108,15 @@ if command -v systemctl >/dev/null 2>&1 && systemctl cat "$SERVICE_NAME" >/dev/n
   run_privileged systemctl restart "$SERVICE_NAME"
   healthy=false
   for _attempt in {1..15}; do
-    if verify_endpoint_version "${HEALTH_URL%/}/health" "${TEMP_DIR}/health.json" \
-      && verify_endpoint_version "${HEALTH_URL%/}/info" "${TEMP_DIR}/info.json"; then
+    if verify_endpoint_compatibility "${HEALTH_URL%/}/health" "${TEMP_DIR}/health.json" \
+      && verify_endpoint_compatibility "${HEALTH_URL%/}/info" "${TEMP_DIR}/info.json"; then
       healthy=true
       break
     fi
     sleep 1
   done
   if [[ "$healthy" != true ]]; then
-    echo "The service did not report version ${TARGET_VERSION} from /health and /info." >&2
+    echo "The service did not report version ${TARGET_VERSION} and protocol ${EXPECTED_PROTOCOL_VERSION} from /health and /info." >&2
     if [[ -n "$CURRENT_VERSION" && "$CURRENT_VERSION" != "$TARGET_VERSION" ]]; then
       echo "Rollback: $0 ${CURRENT_VERSION}" >&2
     fi

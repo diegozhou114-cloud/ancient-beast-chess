@@ -112,13 +112,13 @@ bash server/install-server.sh
 
 对应制品发布前脚本会明确下载失败。脚本不会绕过校验，也不会静默修改系统防火墙或云安全组。
 
-已有全局安装可用明确目标版本进行更新；脚本会识别同名 systemd 服务，重启后同时检查 `/health` 与 `/info`，并打印上一版本的回滚命令：
+已有全局安装可用明确目标版本进行更新；全局安装会提供 `ancient-beast-chess-server-update` 命令。它会识别同名 systemd 服务，重启后同时检查 `/health` 与 `/info` 的服务器版本和协议，并打印上一版本的回滚命令：
 
 ```bash
-bash server/update-server.sh 1.0.0
+ancient-beast-chess-server-update 1.0.0
 ```
 
-自定义服务名或本地健康检查地址时，可设置 `ABC_SERVER_SERVICE` 与 `ABC_SERVER_HEALTH_URL`。更新脚本不会从“latest”接口猜测版本，也不会创建 systemd 服务。
+需要覆盖安装同版本修订包时执行 `ancient-beast-chess-server-update 1.0.0 --force`。自定义服务名、本地健康检查地址或预期协议时，可设置 `ABC_SERVER_SERVICE`、`ABC_SERVER_HEALTH_URL` 与 `ABC_SERVER_PROTOCOL_VERSION`。更新脚本不会从“latest”接口猜测版本，也不会创建 systemd 服务。
 
 包发布后也可使用 npm registry：
 

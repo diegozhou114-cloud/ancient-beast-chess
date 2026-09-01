@@ -30,11 +30,12 @@ describe("distribution and infrastructure", () => {
 
   it("verifies the root server package boundary and executable bin", () => {
     const projectManifest = JSON.parse(readFileSync(resolve(projectRoot, "package.json"), "utf8")) as { version: string };
-    const serverManifest = JSON.parse(readFileSync(resolve(serverRoot, "package.json"), "utf8")) as { version: string };
+    const serverManifest = JSON.parse(readFileSync(resolve(serverRoot, "package.json"), "utf8")) as { version: string; bin: Record<string, string> };
     const protocolSource = readFileSync(resolve(serverRoot, "src/protocol.ts"), "utf8");
     const installerSource = readFileSync(resolve(serverRoot, "install-server.sh"), "utf8");
     expect(projectManifest.version).toBe("1.0.0");
     expect(serverManifest.version).toBe(projectManifest.version);
+    expect(serverManifest.bin["ancient-beast-chess-server-update"]).toBe("update-server.sh");
     expect(protocolSource).toContain(`SERVER_VERSION = "${projectManifest.version}"`);
     expect(installerSource).toContain(`ABC_SERVER_VERSION:-${projectManifest.version}`);
 
@@ -46,6 +47,7 @@ describe("distribution and infrastructure", () => {
     expect(output).toContain('"packageName":"ancient-beast-chess-server"');
     expect(output).toContain(`"filename":"ancient-beast-chess-server-${projectManifest.version}.tgz"`);
     expect(output).toContain('"cliMode":"755"');
+    expect(output).toContain('"updaterMode":"755"');
   }, 15_000);
 
   it("keeps the installer syntax valid and aligned with the architecture-neutral package", () => {
@@ -61,6 +63,8 @@ describe("distribution and infrastructure", () => {
     execFileSync("bash", ["-n", updater]);
     const source = readFileSync(updater, "utf8");
     expect(source).toContain('TARGET_VERSION="${1:-${ABC_SERVER_VERSION:-}}"');
+    expect(source).toContain('FORCE_REINSTALL=true');
+    expect(source).toContain('body.protocolVersion !== process.argv[3]');
     expect(source).toContain('systemctl restart "$SERVICE_NAME"');
     expect(source).toContain('Rollback command: $0 ${CURRENT_VERSION}');
   });

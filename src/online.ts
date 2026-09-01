@@ -1,7 +1,24 @@
 import { COLS, RANKS, canCapture, type Action, type Camp, type GameStatus, type LayerMode, type Rank } from "./game";
 
-export const ONLINE_PROTOCOL_VERSION = "abc-ws/1";
+declare const __APP_VERSION__: string;
+
+export const CLIENT_VERSION = __APP_VERSION__;
+export const ONLINE_PROTOCOL_VERSION = "abc-ws/2";
 export const ONLINE_SESSION_KEY = "ancient-beast-chess.online-session.v1";
+const INCOMPATIBLE_SERVER_CLOSE_CODE = 4002;
+
+export type OnlineCompatibilityErrorCode = "PROTOCOL_MISMATCH" | "SERVER_VERSION_MISMATCH";
+
+export class OnlineCompatibilityError extends Error {
+  constructor(
+    readonly code: OnlineCompatibilityErrorCode,
+    readonly expected: string,
+    readonly actual: string,
+  ) {
+    super(code);
+    this.name = "OnlineCompatibilityError";
+  }
+}
 
 export interface PublicPiece {
   revealed: true;
@@ -86,6 +103,18 @@ export interface OnlineConnectionHandlers {
   onState(state: ConnectionState, intentional: boolean): void;
 }
 
+export function getOnlineCompatibilityError(
+  welcome: Extract<ServerMessage, { type: "welcome" }>,
+): OnlineCompatibilityError | null {
+  if (welcome.protocolVersion !== ONLINE_PROTOCOL_VERSION) {
+    return new OnlineCompatibilityError("PROTOCOL_MISMATCH", ONLINE_PROTOCOL_VERSION, welcome.protocolVersion);
+  }
+  if (welcome.serverVersion !== CLIENT_VERSION) {
+    return new OnlineCompatibilityError("SERVER_VERSION_MISMATCH", CLIENT_VERSION, welcome.serverVersion);
+  }
+  return null;
+}
+
 export class OnlineConnection {
   private socket: WebSocket | null = null;
   private readonly intentionalClosures = new WeakSet<WebSocket>();
@@ -118,18 +147,19 @@ export class OnlineConnection {
         const message = parseServerMessage(event.data);
         if (!message) {
           fail(new Error("INVALID_SERVER_MESSAGE"));
-          socket.close(1002, "Invalid server message");
+          socket.close(INCOMPATIBLE_SERVER_CLOSE_CODE, "Invalid server message");
           return;
         }
         if (!settled) {
           if (message.type !== "welcome") {
             fail(new Error("WELCOME_REQUIRED"));
-            socket.close(1002, "Welcome required");
+            socket.close(INCOMPATIBLE_SERVER_CLOSE_CODE, "Welcome required");
             return;
           }
-          if (message.protocolVersion !== ONLINE_PROTOCOL_VERSION) {
-            fail(new Error("PROTOCOL_MISMATCH"));
-            socket.close(1002, "Protocol mismatch");
+          const compatibilityError = getOnlineCompatibilityError(message);
+          if (compatibilityError) {
+            fail(compatibilityError);
+            socket.close(INCOMPATIBLE_SERVER_CLOSE_CODE, compatibilityError.code === "PROTOCOL_MISMATCH" ? "Protocol mismatch" : "Version mismatch");
             return;
           }
           settled = true;

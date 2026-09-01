@@ -24,7 +24,7 @@ assert.equal(
   "package filename must match the release asset name",
 );
 
-const allowedFiles = new Set(["LICENSE", "README.md", "package.json"]);
+const allowedFiles = new Set(["LICENSE", "README.md", "package.json", "update-server.sh"]);
 const paths = result.files.map((file) => file.path);
 for (const path of paths) {
   assert.ok(
@@ -36,10 +36,14 @@ assert.ok(paths.includes("dist/index.js"), "package must contain the server libr
 const cli = result.files.find((file) => file.path === "dist/cli.js");
 assert.ok(cli, "package must contain dist/cli.js");
 assert.equal(cli.mode & 0o111, 0o111, "dist/cli.js must have mode 0755 execute bits");
+const updater = result.files.find((file) => file.path === "update-server.sh");
+assert.ok(updater, "package must contain update-server.sh");
+assert.equal(updater.mode & 0o111, 0o111, "update-server.sh must have execute bits");
 
 process.stdout.write(`${JSON.stringify({
   packageName: result.name,
   filename: result.filename,
   entryCount: result.entryCount,
   cliMode: cli.mode.toString(8),
+  updaterMode: updater.mode.toString(8),
 })}\n`);

@@ -26,7 +26,7 @@ class Client {
       socket.once("error", reject);
     });
     const welcome = await client.next("welcome");
-    assert.equal(welcome.protocolVersion, "abc-ws/1");
+    assert.equal(welcome.protocolVersion, "abc-ws/2");
     return client;
   }
 

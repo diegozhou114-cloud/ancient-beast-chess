@@ -64,13 +64,13 @@ npx --yes ancient-beast-chess-server@1.0.0
 
 完整消息格式见 [协议文档](docs/protocol-zh.md)，各 Linux 发行版安装方式见 [部署文档](docs/deployment-zh.md)。
 
-已安装实例可使用仓库中的显式版本更新脚本。脚本先校验 Release 包的 SHA-256，再安装、重启已有 systemd 服务，并核对 `/health` 与 `/info` 报告的版本：
+通过 Release 包安装后，全局安装会同时提供更新命令。它先校验 Release 包的 SHA-256，再安装、重启已有 systemd 服务，并核对 `/health` 与 `/info` 报告的版本和协议：
 
 ```bash
-bash update-server.sh 1.0.0
+ancient-beast-chess-server-update 1.0.0
 ```
 
-更新脚本不修改防火墙；失败时会保留并打印上一版本的回滚命令。
+同一版本需要重新安装修订包时使用 `ancient-beast-chess-server-update 1.0.0 --force`。更新脚本不修改防火墙；失败时会保留并打印上一版本的回滚命令。
 
 ## 验证
 

@@ -13,13 +13,15 @@
     }
   },
   "bin": {
-    "ancient-beast-chess-server": "dist/cli.js"
+    "ancient-beast-chess-server": "dist/cli.js",
+    "ancient-beast-chess-server-update": "update-server.sh"
   },
   "files": [
     "dist",
     "docs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "update-server.sh"
   ],
   "scripts": {
     "dev": "tsx watch src/cli.ts",

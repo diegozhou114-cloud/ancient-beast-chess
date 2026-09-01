@@ -1,13 +1,13 @@
-# WebSocket 协议 v1
+# WebSocket 协议 v2
 
-协议标识为 `abc-ws/1`，服务器版本为 `1.0.0`。本次新增消息保持向后兼容，未声明审批的房间仍沿用自动加入流程。客户端连接 `/ws`，只发送 UTF-8 JSON 文本消息。二进制消息会被拒绝，单条消息默认不得超过 16 KiB。
+协议标识为 `abc-ws/2`，服务器版本为 `1.0.0`。客户端必须同时匹配协议版本与服务器版本，版本不一致时不得创建、加入或恢复房间。客户端连接 `/ws`，只发送 UTF-8 JSON 文本消息。二进制消息会被拒绝，单条消息默认不得超过 16 KiB。
 
 ## 连接与房间流程
 
 服务器建立连接后先发送：
 
 ```json
-{"type":"welcome","protocolVersion":"abc-ws/1","serverVersion":"1.0.0","connectionId":"..."}
+{"type":"welcome","protocolVersion":"abc-ws/2","serverVersion":"1.0.0","connectionId":"..."}
 ```
 
 客户端消息：

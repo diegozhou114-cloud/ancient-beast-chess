@@ -1,18 +1,122 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEmptyState, makePiece } from "../src/game";
 import {
+  CLIENT_VERSION,
+  ONLINE_PROTOCOL_VERSION,
   ONLINE_SESSION_KEY,
+  OnlineConnection,
+  OnlineCompatibilityError,
   getOnlineLegalDestinations,
+  getOnlineCompatibilityError,
   isValidRoomCode,
   loadOnlineSession,
   normalizeRoomCode,
   normalizeServerAddress,
   parseServerMessage,
   saveOnlineSession,
+  type ConnectionState,
   type PublicGameState,
 } from "../src/online";
 
+class TestWebSocket {
+  static instances: TestWebSocket[] = [];
+
+  readyState = 0;
+  closeCode: number | null = null;
+  readonly sent: string[] = [];
+  private readonly listeners = new Map<string, Array<(event: { data?: string }) => void>>();
+
+  constructor(readonly url: string) {
+    TestWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: (event: { data?: string }) => void): void {
+    const listeners = this.listeners.get(type) ?? [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  close(code?: number): void {
+    if (code !== undefined && code !== 1000 && (code < 3000 || code > 4999)) {
+      throw new Error(`Invalid WebSocket close code: ${code}`);
+    }
+    this.closeCode = code ?? null;
+    this.readyState = 3;
+    this.emit("close", {});
+  }
+
+  emitWelcome(serverVersion: string): void {
+    this.readyState = 1;
+    this.emit("message", {
+      data: JSON.stringify({
+        type: "welcome",
+        protocolVersion: ONLINE_PROTOCOL_VERSION,
+        serverVersion,
+        connectionId: "connection-1",
+      }),
+    });
+  }
+
+  private emit(type: string, event: { data?: string }): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+}
+
+afterEach(() => {
+  TestWebSocket.instances = [];
+  vi.unstubAllGlobals();
+});
+
 describe("online connection input", () => {
+  it("accepts only a server with the same protocol and game version", () => {
+    const welcome = {
+      type: "welcome" as const,
+      protocolVersion: ONLINE_PROTOCOL_VERSION,
+      serverVersion: CLIENT_VERSION,
+      connectionId: "connection-1",
+    };
+
+    expect(getOnlineCompatibilityError(welcome)).toBeNull();
+    const protocolError = getOnlineCompatibilityError({ ...welcome, protocolVersion: "abc-ws/1" });
+    expect(protocolError).toBeInstanceOf(OnlineCompatibilityError);
+    expect(protocolError).toMatchObject({
+      code: "PROTOCOL_MISMATCH",
+      expected: ONLINE_PROTOCOL_VERSION,
+      actual: "abc-ws/1",
+    });
+    const versionError = getOnlineCompatibilityError({ ...welcome, serverVersion: "0.0.3" });
+    expect(versionError).toBeInstanceOf(OnlineCompatibilityError);
+    expect(versionError).toMatchObject({
+      code: "SERVER_VERSION_MISMATCH",
+      expected: CLIENT_VERSION,
+      actual: "0.0.3",
+    });
+  });
+
+  it("closes a mismatched connection before a room operation can be sent", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("WebSocket", TestWebSocket);
+    const states: ConnectionState[] = [];
+    const connection = new OnlineConnection({
+      onMessage: vi.fn(),
+      onState: (state) => states.push(state),
+    });
+
+    const connecting = connection.connect("ws://127.0.0.1:8791/ws");
+    const socket = TestWebSocket.instances[0];
+    socket.emitWelcome("0.0.3");
+
+    await expect(connecting).rejects.toMatchObject({ code: "SERVER_VERSION_MISMATCH" });
+    expect(socket.closeCode).toBe(4002);
+    expect(states).toEqual(["idle", "connecting", "closed"]);
+    expect(connection.send({ type: "create_room" })).toBe(false);
+    expect(socket.sent).toEqual([]);
+  });
+
   it("normalizes server addresses without embedding a deployment endpoint", () => {
     expect(normalizeServerAddress("127.0.0.1:8787")).toBe("ws://127.0.0.1:8787/ws");
     expect(normalizeServerAddress("https://game.example.test/socket")).toBe("wss://game.example.test/socket");

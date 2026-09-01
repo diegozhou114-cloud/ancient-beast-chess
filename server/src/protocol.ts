@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Action, Camp, GameStatus, LayerMode, Rank } from "../../src/game.js";
 
-export const PROTOCOL_VERSION = "abc-ws/1";
+export const PROTOCOL_VERSION = "abc-ws/2";
 export const SERVER_VERSION = "1.0.0";
 
 export const actionSchema = z.discriminatedUnion("type", [

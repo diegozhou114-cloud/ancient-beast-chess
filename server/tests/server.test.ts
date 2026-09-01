@@ -190,7 +190,7 @@ describe("Ancient Beast Chess server", () => {
     expect(health).toMatchObject({
       status: "ok",
       serverVersion: "1.0.0",
-      protocolVersion: "abc-ws/1",
+      protocolVersion: "abc-ws/2",
       online: 0,
       rooms: 0,
       storage: "memory",
