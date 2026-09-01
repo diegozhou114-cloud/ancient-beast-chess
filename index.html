@@ -8,7 +8,7 @@
       name="description"
       content="一局四乘五棋盘上的古版暗棋斗兽棋，对阵沉思中的墨方棋手。"
     />
-    <title>暗兽棋 · 人机对弈</title>
+    <title>暗兽棋</title>
   </head>
   <body>
     <div class="app-shell">
@@ -32,13 +32,17 @@
             <i data-lucide="house" aria-hidden="true"></i>
             <span>返回主页</span>
           </button>
-          <button class="command-button command-button--quiet" id="setup-button" type="button" title="选择难度" aria-label="选择难度" data-game-action hidden>
+          <button class="command-button command-button--quiet" id="setup-button" type="button" title="选择难度" aria-label="选择难度" data-solo-game-action hidden>
             <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
             <span>选择难度</span>
           </button>
-          <button class="command-button" id="restart-button" type="button" title="重新开始" aria-label="重新开始" data-game-action hidden>
+          <button class="command-button" id="restart-button" type="button" title="重新开始" aria-label="重新开始" data-solo-game-action hidden>
             <i data-lucide="rotate-ccw" aria-hidden="true"></i>
             <span>重新开始</span>
+          </button>
+          <button class="command-button" id="online-resign-button" type="button" title="认输" aria-label="认输" data-online-game-action hidden>
+            <i data-lucide="log-out" aria-hidden="true"></i>
+            <span>认输</span>
           </button>
         </div>
       </header>
@@ -54,6 +58,108 @@
             <strong>人机大战</strong>
             <i data-lucide="chevron-right" aria-hidden="true"></i>
           </button>
+          <button class="mode-option" id="online-mode-button" type="button">
+            <span class="mode-seal mode-seal--online" aria-hidden="true"><i data-lucide="wifi"></i></span>
+            <strong>联机对战</strong>
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
+        </section>
+      </main>
+
+      <main class="flow-view" id="online-view" hidden>
+        <section class="online-screen" aria-labelledby="online-title">
+          <div class="flow-heading">
+            <p>双人对弈</p>
+            <h2 id="online-title">联机对战</h2>
+          </div>
+
+          <div class="online-status-line" id="online-status-line" role="status" aria-live="polite">
+            <span class="connection-mark" aria-hidden="true"></span>
+            <span id="online-connection-status">未连接</span>
+          </div>
+
+          <div id="online-entry">
+            <div class="setup-group online-server-group">
+              <label class="setup-label" for="online-server-input">
+                <span aria-hidden="true">壹</span>
+                <h3>服务器</h3>
+              </label>
+              <input class="text-input" id="online-server-input" type="text" inputmode="url" autocomplete="url" spellcheck="false" value="ws://127.0.0.1:8787/ws" />
+            </div>
+
+            <div class="online-commands">
+              <div class="online-command-row">
+                <div class="setup-label">
+                  <span aria-hidden="true">贰</span>
+                  <h3>创建房间</h3>
+                </div>
+                <button class="command-button" id="create-room-button" type="button">
+                  <i data-lucide="plus" aria-hidden="true"></i>
+                  <span>创建房间</span>
+                </button>
+              </div>
+              <div class="online-command-row online-command-row--join">
+                <label class="setup-label" for="join-room-code">
+                  <span aria-hidden="true">叁</span>
+                  <h3>加入房间</h3>
+                </label>
+                <div class="join-controls">
+                  <input class="text-input room-code-input" id="join-room-code" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="6" placeholder="房间码" aria-label="六位房间码" />
+                  <button class="command-button" id="join-room-button" type="button">
+                    <i data-lucide="log-in" aria-hidden="true"></i>
+                    <span>加入</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p class="online-error" id="online-error" role="alert" hidden></p>
+            <div class="setup-actions">
+              <button class="command-button command-button--quiet" id="online-home-button" type="button">
+                <i data-lucide="arrow-left" aria-hidden="true"></i>
+                <span>返回主页</span>
+              </button>
+              <button class="command-button command-button--quiet" id="resume-room-button" type="button" hidden>
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                <span>恢复上次房间</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="online-room" id="online-room" hidden>
+            <div class="room-identity">
+              <div>
+                <span>房间码</span>
+                <strong id="online-room-code">------</strong>
+              </div>
+              <button class="command-button command-button--quiet" id="copy-room-code-button" type="button">
+                <i data-lucide="copy" aria-hidden="true"></i>
+                <span>复制</span>
+              </button>
+            </div>
+            <div class="online-seats" aria-label="双方席位">
+              <div class="online-seat online-seat--red">
+                <b>朱</b>
+                <span id="online-red-seat">等待加入</span>
+              </div>
+              <div class="online-seat online-seat--black">
+                <b>墨</b>
+                <span id="online-black-seat">等待加入</span>
+              </div>
+            </div>
+            <p class="online-camp-line">你执 <strong id="online-player-camp">朱方</strong></p>
+            <p class="online-error" id="online-room-error" role="alert" hidden></p>
+            <div class="setup-actions">
+              <button class="command-button command-button--quiet" id="leave-room-button" type="button">
+                <i data-lucide="arrow-left" aria-hidden="true"></i>
+                <span>离开房间</span>
+              </button>
+              <button class="command-button" id="ready-button" type="button">
+                <i data-lucide="check" aria-hidden="true"></i>
+                <span>准备</span>
+              </button>
+            </div>
+          </div>
         </section>
       </main>
 
@@ -123,8 +229,8 @@
           </div>
 
           <div class="match-config" aria-label="当前对局配置">
-            <span>人机大战</span>
-            <span>难度 <strong id="match-difficulty">朱厌</strong></span>
+            <span id="match-mode-label">人机大战</span>
+            <span id="match-detail-prefix">难度 <strong id="match-difficulty">朱厌</strong></span>
           </div>
 
           <div class="score-line">
@@ -218,7 +324,7 @@
 
     <div class="result-banner" id="result-banner" hidden role="dialog" aria-modal="true" aria-labelledby="result-title">
       <div class="result-seal" id="result-seal">胜</div>
-      <p>本局已定</p>
+      <p id="result-mode-label">本局已定</p>
       <h2 id="result-title">朱方获胜</h2>
       <div class="result-actions">
         <button class="icon-button" id="result-home-button" type="button" title="返回主页" aria-label="返回主页">
@@ -226,11 +332,11 @@
         </button>
         <button class="command-button command-button--quiet" id="result-setup-button" type="button">
           <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
-          <span>选择难度</span>
+          <span id="result-secondary-label">选择难度</span>
         </button>
         <button class="command-button" id="result-restart-button" type="button">
           <i data-lucide="rotate-ccw" aria-hidden="true"></i>
-          <span>再来一局</span>
+          <span id="result-primary-label">再来一局</span>
         </button>
       </div>
     </div>

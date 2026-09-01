@@ -1,7 +1,7 @@
 {
   "name": "ancient-beast-chess",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A 4x5 blind beast-chess game against a tactical AI.",
   "type": "module",
   "main": "electron/main.cjs",
@@ -10,7 +10,13 @@
     "dev:renderer": "vite --host 127.0.0.1 --port 4173",
     "desktop": "concurrently -k \"npm run dev:renderer\" \"wait-on http://127.0.0.1:4173 && ELECTRON_RENDERER_URL=http://127.0.0.1:4173 electron .\"",
     "build": "tsc -b && vite build",
-    "test": "vitest run",
+    "test": "vitest run tests/game.test.ts tests/online.test.ts",
+    "server:dev": "npm --prefix server run dev",
+    "server:start": "npm --prefix server run start",
+    "server:test": "npm --prefix server test",
+    "server:build": "npm --prefix server run build",
+    "server:pack:check": "npm run server:build && node server/scripts/verify-package.mjs",
+    "server:pack": "npm run server:pack:check && npm pack ./server",
     "package:mac": "npm run build && electron-builder --mac --arm64 --publish never",
     "package:win": "npm run build && electron-builder --win zip --x64 --publish never"
   },

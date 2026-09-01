@@ -23,6 +23,27 @@ npm install
 npm run desktop
 ```
 
+## 联机服务器（v0.0.3）
+
+仓库中的 `server/` 是独立的 TypeScript + Node.js 权威 WebSocket 服务器，直接复用并打包现有棋局规则。服务器负责真实暗子、洗牌、回合与行动校验，公开快照不会包含未翻棋子的阵营或类型。
+
+```bash
+npm ci --prefix server
+npm run server:dev    # 开发监听
+npm run server:test   # 服务器自动化测试
+npm run server:build  # 生产构建
+npm run server:start  # 启动已构建服务器
+npm run server:pack:check         # 校验服务器 npm 包边界
+npm run server:pack -- --dry-run  # 预览服务器 npm tgz
+npm run server:pack               # 生成服务器 npm tgz
+```
+
+默认服务地址为 `http://0.0.0.0:8787`，WebSocket 路径为 `/ws`。Docker、自建安装、环境变量与 systemd 说明见 [服务器部署文档](server/docs/deployment-zh.md)，消息格式见 [WebSocket 协议](server/docs/protocol-zh.md)。
+
+v0.0.3 使用单进程内存房间：一个进程可管理多个房间，但服务器重启会丢失全部房间。本版本不含账号、匹配队列、聊天、观战、排行榜或持久化。
+
+客户端主页选择“联机对战”后，可填写任意允许连接的 `ws://` 或 `wss://` 服务器地址。创建方把六位房间码交给另一位玩家，双方加入并准备后自动开局。客户端只保存当前浏览器会话所需的重连令牌；主动离房或对局结束后立即清除。
+
 ## 打包
 
 ```bash

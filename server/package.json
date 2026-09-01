@@ -1,0 +1,64 @@
+{
+  "name": "ancient-beast-chess-server",
+  "version": "0.0.3",
+  "description": "Authoritative WebSocket server for Ancient Beast Chess.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "ancient-beast-chess-server": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsup src/cli.ts src/index.ts --format esm --platform node --target node20 --clean --sourcemap --dts",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diegozhou114-cloud/ancient-beast-chess.git",
+    "directory": "server"
+  },
+  "bugs": {
+    "url": "https://github.com/diegozhou114-cloud/ancient-beast-chess/issues"
+  },
+  "homepage": "https://github.com/diegozhou114-cloud/ancient-beast-chess#readme",
+  "keywords": [
+    "ancient-beast-chess",
+    "websocket",
+    "game-server"
+  ],
+  "dependencies": {
+    "ws": "^8.18.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

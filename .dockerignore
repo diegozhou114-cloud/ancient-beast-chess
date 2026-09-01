@@ -1,0 +1,9 @@
+.git
+.codegraph
+node_modules
+server/node_modules
+dist
+server/dist
+*.tgz
+*.log
+.DS_Store

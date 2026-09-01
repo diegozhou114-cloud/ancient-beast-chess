@@ -3,4 +3,5 @@ dist/
 .codegraph/
 .DS_Store
 *.log
+*.tgz
 *.tsbuildinfo

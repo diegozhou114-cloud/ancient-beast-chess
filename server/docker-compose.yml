@@ -1,0 +1,26 @@
+services:
+  ancient-beast-chess-server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    image: ancient-beast-chess-server:0.0.3
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${ABC_BIND_ADDRESS:-0.0.0.0}:${ABC_PUBLIC_PORT:-8787}:8787"
+    environment:
+      ABC_HOST: 0.0.0.0
+      ABC_PORT: 8787
+      ABC_TRUST_PROXY: "${ABC_TRUST_PROXY:-false}"
+      ABC_WAITING_TIMEOUT_MS: ${ABC_WAITING_TIMEOUT_MS:-600000}
+      ABC_RECONNECT_GRACE_MS: ${ABC_RECONNECT_GRACE_MS:-300000}
+      ABC_ENDED_RETENTION_MS: ${ABC_ENDED_RETENTION_MS:-120000}
+      ABC_MAX_CONNECTIONS: ${ABC_MAX_CONNECTIONS:-1000}
+      ABC_MAX_ROOMS: ${ABC_MAX_ROOMS:-500}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
